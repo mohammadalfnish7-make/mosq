@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { AuthForm } from "@/components/AuthForm";
+import { RegisterForm } from "@/components/AuthForm";
 
 export default function RegisterPage() {
   return (
@@ -13,7 +13,7 @@ export default function RegisterPage() {
       </section>
 
       <section className="rounded-lg border border-ink/10 bg-white p-5 shadow-sm">
-        <AuthForm mode="register" />
+        <RegisterForm />
       </section>
 
       <Link className="text-center text-sm font-semibold text-ink/60" href="/">

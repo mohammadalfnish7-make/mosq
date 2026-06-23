@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Suspense } from "react";
-import { AuthForm } from "@/components/AuthForm";
+import { LoginForm } from "@/components/AuthForm";
 
 export default function LoginPage() {
   return (
@@ -13,7 +13,7 @@ export default function LoginPage() {
 
       <section className="rounded-lg border border-ink/10 bg-white p-5 shadow-sm">
         <Suspense fallback={<p className="text-sm text-ink/60">جاري التحميل...</p>}>
-          <AuthForm mode="login" />
+          <LoginForm />
         </Suspense>
       </section>
 
