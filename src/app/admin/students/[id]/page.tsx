@@ -1,7 +1,7 @@
-import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { LogoutButton } from "@/components/LogoutButton";
 import { StudentProfileView } from "@/components/StudentProfileView";
+import { getBaseUrl } from "@/lib/base-url";
 import { HttpError } from "@/server/http";
 import { getAdminStudentProfile } from "@/server/student-profile";
 
@@ -9,18 +9,11 @@ export const dynamic = "force-dynamic";
 
 type Params = { params: Promise<{ id: string }> };
 
-function getBaseUrl() {
-  const headerStore = headers();
-  const host = headerStore.get("x-forwarded-host") ?? headerStore.get("host");
-  const proto = headerStore.get("x-forwarded-proto") ?? "https";
-  return host ? `${proto}://${host}` : undefined;
-}
-
 export default async function AdminStudentPage({ params }: Params) {
   const { id } = await params;
 
   try {
-    const profile = await getAdminStudentProfile(id, getBaseUrl());
+    const profile = await getAdminStudentProfile(id, await getBaseUrl());
 
     return (
       <div>
