@@ -18,12 +18,14 @@ const fieldClass = "tap-target rounded-lg border border-ink/15 bg-white px-3";
 const labelClass = "text-sm font-semibold text-ink/80";
 const buttonClass =
   "tap-target rounded-lg bg-teal px-4 py-2 text-sm font-bold text-white shadow-sm disabled:opacity-60";
+const ghostButtonClass =
+  "tap-target rounded-lg border border-ink/15 bg-white px-3 py-1 text-xs font-bold text-ink";
 
-async function postJson(url: string, body: unknown) {
+async function requestJson(method: string, url: string, body?: unknown) {
   const response = await fetch(url, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body)
+    method,
+    headers: body ? { "content-type": "application/json" } : undefined,
+    body: body ? JSON.stringify(body) : undefined
   });
   const data = await response.json();
   if (!response.ok) {
@@ -52,46 +54,88 @@ function useAdminForm(onSuccess: () => void) {
     }
   }
 
-  return { error, success, loading, submit, clearMessages: () => { setError(null); setSuccess(null); } };
+  return { error, success, loading, submit };
 }
 
-function CircleSection({ circles, onCreated }: { circles: AdminBootstrap["circles"]; onCreated: () => void }) {
-  const { error, success, loading, submit } = useAdminForm(onCreated);
+function ActiveBadge({ isActive }: { isActive: boolean }) {
+  return (
+    <span
+      className={`rounded-md px-2 py-0.5 text-xs font-bold ${
+        isActive ? "bg-mint text-ink" : "bg-clay/15 text-clay"
+      }`}
+    >
+      {isActive ? "نشط" : "موقوف"}
+    </span>
+  );
+}
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+function CircleSection({ circles, onSaved }: { circles: AdminBootstrap["circles"]; onSaved: () => void }) {
+  const form = useAdminForm(onSaved);
+  const [editingId, setEditingId] = useState<string | null>(null);
+
+  async function handleCreate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
-    const name = String(form.get("name") ?? "").trim();
-    await submit(async () => {
-      await postJson("/api/admin/circles", { name });
-      event.currentTarget.reset();
+    const htmlForm = event.currentTarget;
+    const data = new FormData(htmlForm);
+    const name = String(data.get("name") ?? "").trim();
+    await form.submit(async () => {
+      await requestJson("POST", "/api/admin/circles", { name });
+      htmlForm.reset();
+      setEditingId(null);
     }, "تمت إضافة الحلقة بنجاح");
+  }
+
+  async function handleUpdate(event: FormEvent<HTMLFormElement>, id: string) {
+    event.preventDefault();
+    const data = new FormData(event.currentTarget);
+    const name = String(data.get("name") ?? "").trim();
+    const isActive = data.get("isActive") === "on";
+    await form.submit(async () => {
+      await requestJson("PATCH", `/api/admin/circles/${id}`, { name, isActive });
+      setEditingId(null);
+    }, "تم تحديث الحلقة");
   }
 
   return (
     <section className="rounded-lg border border-ink/10 bg-white p-4">
       <h2 className="text-lg font-bold">الحلقات</h2>
-      <form className="mt-3 grid gap-2" onSubmit={handleSubmit}>
+      <form className="mt-3 grid gap-2" onSubmit={handleCreate}>
         <label className="grid gap-1">
           <span className={labelClass}>اسم الحلقة</span>
           <input className={fieldClass} name="name" required minLength={2} maxLength={80} placeholder="حلقة الفجر" />
         </label>
-        {error ? <FormError message={error} /> : null}
-        {success ? <FormSuccess message={success} /> : null}
-        <button className={buttonClass} type="submit" disabled={loading}>
-          {loading ? "جاري الحفظ..." : "إضافة حلقة"}
+        {form.error ? <FormError message={form.error} /> : null}
+        {form.success ? <FormSuccess message={form.success} /> : null}
+        <button className={buttonClass} type="submit" disabled={form.loading}>
+          {form.loading ? "جاري الحفظ..." : "إضافة حلقة"}
         </button>
       </form>
       <div className="mt-4 space-y-2">
-        {circles.length === 0 ? (
-          <p className="text-sm text-ink/60">لا توجد حلقات بعد.</p>
-        ) : (
-          circles.map((circle) => (
-            <div key={circle.id} className="rounded-md bg-paper px-3 py-2 font-semibold">
-              {circle.name}
-            </div>
-          ))
-        )}
+        {circles.map((circle) => (
+          <div key={circle.id} className="rounded-md border border-ink/10 bg-paper p-3">
+            {editingId === circle.id ? (
+              <form className="grid gap-2" onSubmit={(event) => void handleUpdate(event, circle.id)}>
+                <input className={fieldClass} name="name" defaultValue={circle.name} required minLength={2} maxLength={80} />
+                <label className="flex items-center gap-2 text-sm font-semibold">
+                  <input type="checkbox" name="isActive" defaultChecked={circle.isActive} />
+                  نشط
+                </label>
+                <div className="flex gap-2">
+                  <button className={buttonClass} type="submit" disabled={form.loading}>حفظ</button>
+                  <button className={ghostButtonClass} type="button" onClick={() => setEditingId(null)}>إلغاء</button>
+                </div>
+              </form>
+            ) : (
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <span className="font-semibold">{circle.name}</span>
+                  <ActiveBadge isActive={circle.isActive} />
+                </div>
+                <button className={ghostButtonClass} type="button" onClick={() => setEditingId(circle.id)}>تعديل</button>
+              </div>
+            )}
+          </div>
+        ))}
       </div>
     </section>
   );
@@ -100,82 +144,110 @@ function CircleSection({ circles, onCreated }: { circles: AdminBootstrap["circle
 function TeacherSection({
   circles,
   teachers,
-  onCreated
+  onSaved
 }: {
   circles: AdminBootstrap["circles"];
   teachers: AdminBootstrap["teachers"];
-  onCreated: () => void;
+  onSaved: () => void;
 }) {
-  const { error, success, loading, submit } = useAdminForm(onCreated);
+  const form = useAdminForm(onSaved);
+  const [editingId, setEditingId] = useState<string | null>(null);
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleCreate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
-    const fullName = String(form.get("fullName") ?? "").trim();
-    const email = String(form.get("email") ?? "").trim();
-    const password = String(form.get("password") ?? "");
-    const phone = String(form.get("phone") ?? "").trim();
-    const circleId = String(form.get("circleId") ?? "");
-
-    await submit(async () => {
-      await postJson("/api/admin/teachers", {
-        fullName,
-        email,
-        password,
-        ...(phone ? { phone } : {}),
-        ...(circleId ? { circleId } : {})
+    const htmlForm = event.currentTarget;
+    const data = new FormData(htmlForm);
+    await form.submit(async () => {
+      await requestJson("POST", "/api/admin/teachers", {
+        fullName: String(data.get("fullName") ?? "").trim(),
+        email: String(data.get("email") ?? "").trim(),
+        password: String(data.get("password") ?? ""),
+        ...(String(data.get("phone") ?? "").trim() ? { phone: String(data.get("phone")).trim() } : {}),
+        ...(String(data.get("circleId") ?? "") ? { circleId: String(data.get("circleId")) } : {})
       });
-      event.currentTarget.reset();
+      htmlForm.reset();
     }, "تمت إضافة المعلم بنجاح");
+  }
+
+  async function handleUpdate(event: FormEvent<HTMLFormElement>, teacher: AdminBootstrap["teachers"][number]) {
+    event.preventDefault();
+    const data = new FormData(event.currentTarget);
+    const password = String(data.get("password") ?? "");
+    await form.submit(async () => {
+      await requestJson("PATCH", `/api/admin/teachers/${teacher.id}`, {
+        fullName: String(data.get("fullName") ?? "").trim(),
+        email: String(data.get("email") ?? "").trim(),
+        phone: String(data.get("phone") ?? "").trim() || null,
+        circleId: String(data.get("circleId") ?? "") || null,
+        isActive: data.get("isActive") === "on",
+        ...(password ? { password } : {})
+      });
+      setEditingId(null);
+    }, "تم تحديث المعلم");
   }
 
   return (
     <section className="rounded-lg border border-ink/10 bg-white p-4">
       <h2 className="text-lg font-bold">المعلمون</h2>
-      <form className="mt-3 grid gap-2" onSubmit={handleSubmit}>
-        <label className="grid gap-1">
-          <span className={labelClass}>الاسم الكامل</span>
-          <input className={fieldClass} name="fullName" required minLength={2} maxLength={120} />
-        </label>
-        <label className="grid gap-1">
-          <span className={labelClass}>البريد الإلكتروني</span>
-          <input className={fieldClass} name="email" type="email" required />
-        </label>
-        <label className="grid gap-1">
-          <span className={labelClass}>كلمة المرور</span>
-          <input className={fieldClass} name="password" type="password" required minLength={8} />
-        </label>
-        <label className="grid gap-1">
-          <span className={labelClass}>الهاتف (اختياري)</span>
-          <input className={fieldClass} name="phone" maxLength={30} />
-        </label>
+      <form className="mt-3 grid gap-2" onSubmit={handleCreate}>
+        <label className="grid gap-1"><span className={labelClass}>الاسم الكامل</span><input className={fieldClass} name="fullName" required minLength={2} maxLength={120} /></label>
+        <label className="grid gap-1"><span className={labelClass}>البريد الإلكتروني</span><input className={fieldClass} name="email" type="email" required /></label>
+        <label className="grid gap-1"><span className={labelClass}>كلمة المرور</span><input className={fieldClass} name="password" type="password" required minLength={8} /></label>
+        <label className="grid gap-1"><span className={labelClass}>الهاتف (اختياري)</span><input className={fieldClass} name="phone" maxLength={30} /></label>
         <label className="grid gap-1">
           <span className={labelClass}>الحلقة (اختياري)</span>
           <select className={fieldClass} name="circleId" defaultValue="">
             <option value="">بدون إسناد الآن</option>
-            {circles.map((circle) => (
-              <option key={circle.id} value={circle.id}>
-                {circle.name}
-              </option>
+            {circles.filter((c) => c.isActive).map((circle) => (
+              <option key={circle.id} value={circle.id}>{circle.name}</option>
             ))}
           </select>
         </label>
-        {error ? <FormError message={error} /> : null}
-        {success ? <FormSuccess message={success} /> : null}
-        <button className={buttonClass} type="submit" disabled={loading}>
-          {loading ? "جاري الحفظ..." : "إضافة معلم"}
-        </button>
+        {form.error ? <FormError message={form.error} /> : null}
+        {form.success ? <FormSuccess message={form.success} /> : null}
+        <button className={buttonClass} type="submit" disabled={form.loading}>{form.loading ? "جاري الحفظ..." : "إضافة معلم"}</button>
       </form>
       <div className="mt-4 space-y-2">
-        {teachers.length === 0 ? (
-          <p className="text-sm text-ink/60">لا يوجد معلمون بعد.</p>
-        ) : (
-          teachers.map((teacher) => (
-            <div key={teacher.id} className="rounded-md bg-paper px-3 py-2 font-semibold">
-              {teacher.fullName}
+        {teachers.map((teacher) => {
+          const circle = circles.find((item) => item.id === teacher.circleId);
+          return (
+            <div key={teacher.id} className="rounded-md border border-ink/10 bg-paper p-3">
+              {editingId === teacher.id ? (
+                <form className="grid gap-2" onSubmit={(event) => void handleUpdate(event, teacher)}>
+                  <input className={fieldClass} name="fullName" defaultValue={teacher.fullName} required />
+                  <input className={fieldClass} name="email" type="email" defaultValue={teacher.email} required />
+                  <input className={fieldClass} name="phone" defaultValue={teacher.phone ?? ""} />
+                  <input className={fieldClass} name="password" type="password" minLength={8} placeholder="كلمة مرور جديدة (اختياري)" />
+                  <select className={fieldClass} name="circleId" defaultValue={teacher.circleId ?? ""}>
+                    <option value="">بدون حلقة</option>
+                    {circles.map((item) => (
+                      <option key={item.id} value={item.id}>{item.name}</option>
+                    ))}
+                  </select>
+                  <label className="flex items-center gap-2 text-sm font-semibold">
+                    <input type="checkbox" name="isActive" defaultChecked={teacher.isActive} />نشط
+                  </label>
+                  <div className="flex gap-2">
+                    <button className={buttonClass} type="submit" disabled={form.loading}>حفظ</button>
+                    <button className={ghostButtonClass} type="button" onClick={() => setEditingId(null)}>إلغاء</button>
+                  </div>
+                </form>
+              ) : (
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <p className="font-semibold">{teacher.fullName}</p>
+                    <p className="text-xs text-ink/60">{teacher.email}</p>
+                    <p className="text-xs text-ink/60">{circle?.name ?? "بدون حلقة"}</p>
+                  </div>
+                  <div className="flex flex-col items-end gap-2">
+                    <ActiveBadge isActive={teacher.isActive} />
+                    <button className={ghostButtonClass} type="button" onClick={() => setEditingId(teacher.id)}>تعديل</button>
+                  </div>
+                </div>
+              )}
             </div>
-          ))
-        )}
+          );
+        })}
       </div>
     </section>
   );
@@ -184,251 +256,258 @@ function TeacherSection({
 function StudentSection({
   circles,
   students,
-  onCreated
+  onSaved
 }: {
   circles: AdminBootstrap["circles"];
   students: AdminBootstrap["students"];
-  onCreated: () => void;
+  onSaved: () => void;
 }) {
-  const { error, success, loading, submit } = useAdminForm(onCreated);
-  const hasCircles = circles.length > 0;
+  const form = useAdminForm(onSaved);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const activeCircles = circles.filter((circle) => circle.isActive);
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleCreate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
-    const fullName = String(form.get("fullName") ?? "").trim();
-    const circleId = String(form.get("circleId") ?? "");
-    const guardianPhone = String(form.get("guardianPhone") ?? "").trim();
-
-    await submit(async () => {
-      await postJson("/api/admin/students", {
-        fullName,
-        circleId,
-        ...(guardianPhone ? { guardianPhone } : {})
+    const htmlForm = event.currentTarget;
+    const data = new FormData(htmlForm);
+    await form.submit(async () => {
+      await requestJson("POST", "/api/admin/students", {
+        fullName: String(data.get("fullName") ?? "").trim(),
+        circleId: String(data.get("circleId") ?? ""),
+        ...(String(data.get("guardianPhone") ?? "").trim() ? { guardianPhone: String(data.get("guardianPhone")).trim() } : {})
       });
-      event.currentTarget.reset();
+      htmlForm.reset();
     }, "تمت إضافة الطالب بنجاح");
+  }
+
+  async function handleUpdate(event: FormEvent<HTMLFormElement>, id: string) {
+    event.preventDefault();
+    const data = new FormData(event.currentTarget);
+    await form.submit(async () => {
+      await requestJson("PATCH", `/api/admin/students/${id}`, {
+        fullName: String(data.get("fullName") ?? "").trim(),
+        circleId: String(data.get("circleId") ?? ""),
+        guardianPhone: String(data.get("guardianPhone") ?? "").trim() || undefined,
+        isActive: data.get("isActive") === "on"
+      });
+      setEditingId(null);
+    }, "تم تحديث الطالب");
   }
 
   return (
     <section className="rounded-lg border border-ink/10 bg-white p-4">
       <h2 className="text-lg font-bold">الطلاب</h2>
-      <form className="mt-3 grid gap-2" onSubmit={handleSubmit}>
-        <label className="grid gap-1">
-          <span className={labelClass}>الاسم الكامل</span>
-          <input className={fieldClass} name="fullName" required minLength={2} maxLength={120} />
-        </label>
+      <form className="mt-3 grid gap-2" onSubmit={handleCreate}>
+        <label className="grid gap-1"><span className={labelClass}>الاسم الكامل</span><input className={fieldClass} name="fullName" required minLength={2} maxLength={120} /></label>
         <label className="grid gap-1">
           <span className={labelClass}>الحلقة</span>
-          <select className={fieldClass} name="circleId" required disabled={!hasCircles}>
-            <option value="">{hasCircles ? "اختر الحلقة" : "أضف حلقة أولاً"}</option>
-            {circles.map((circle) => (
-              <option key={circle.id} value={circle.id}>
-                {circle.name}
-              </option>
-            ))}
+          <select className={fieldClass} name="circleId" required disabled={activeCircles.length === 0}>
+            <option value="">{activeCircles.length ? "اختر الحلقة" : "أضف حلقة أولاً"}</option>
+            {activeCircles.map((circle) => <option key={circle.id} value={circle.id}>{circle.name}</option>)}
           </select>
         </label>
-        <label className="grid gap-1">
-          <span className={labelClass}>هاتف ولي الأمر (اختياري)</span>
-          <input className={fieldClass} name="guardianPhone" maxLength={30} />
-        </label>
-        {error ? <FormError message={error} /> : null}
-        {success ? <FormSuccess message={success} /> : null}
-        <button className={buttonClass} type="submit" disabled={loading || !hasCircles}>
-          {loading ? "جاري الحفظ..." : "إضافة طالب"}
-        </button>
+        <label className="grid gap-1"><span className={labelClass}>هاتف ولي الأمر (اختياري)</span><input className={fieldClass} name="guardianPhone" maxLength={30} /></label>
+        {form.error ? <FormError message={form.error} /> : null}
+        {form.success ? <FormSuccess message={form.success} /> : null}
+        <button className={buttonClass} type="submit" disabled={form.loading || activeCircles.length === 0}>{form.loading ? "جاري الحفظ..." : "إضافة طالب"}</button>
       </form>
       <div className="mt-4 space-y-2">
-        {students.length === 0 ? (
-          <p className="text-sm text-ink/60">لا يوجد طلاب بعد.</p>
-        ) : (
-          students.map((student) => {
-            const circle = circles.find((item) => item.id === student.circleId);
-            return (
-              <div key={student.id} className="rounded-md bg-paper px-3 py-2">
-                <p className="font-semibold">{student.fullName}</p>
-                <p className="text-xs text-ink/60">{circle?.name ?? "حلقة غير معروفة"}</p>
-              </div>
-            );
-          })
-        )}
+        {students.map((student) => {
+          const circle = circles.find((item) => item.id === student.circleId);
+          return (
+            <div key={student.id} className="rounded-md border border-ink/10 bg-paper p-3">
+              {editingId === student.id ? (
+                <form className="grid gap-2" onSubmit={(event) => void handleUpdate(event, student.id)}>
+                  <input className={fieldClass} name="fullName" defaultValue={student.fullName} required />
+                  <select className={fieldClass} name="circleId" defaultValue={student.circleId} required>
+                    {circles.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+                  </select>
+                  <input className={fieldClass} name="guardianPhone" defaultValue={student.guardianPhone ?? ""} />
+                  <label className="flex items-center gap-2 text-sm font-semibold">
+                    <input type="checkbox" name="isActive" defaultChecked={student.isActive} />نشط
+                  </label>
+                  <div className="flex gap-2">
+                    <button className={buttonClass} type="submit" disabled={form.loading}>حفظ</button>
+                    <button className={ghostButtonClass} type="button" onClick={() => setEditingId(null)}>إلغاء</button>
+                  </div>
+                </form>
+              ) : (
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <p className="font-semibold">{student.fullName}</p>
+                    <p className="text-xs text-ink/60">{circle?.name ?? "حلقة غير معروفة"}</p>
+                    {student.guardianPhone ? <p className="text-xs text-ink/60">{student.guardianPhone}</p> : null}
+                  </div>
+                  <div className="flex flex-col items-end gap-2">
+                    <ActiveBadge isActive={student.isActive} />
+                    <button className={ghostButtonClass} type="button" onClick={() => setEditingId(student.id)}>تعديل</button>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
     </section>
   );
 }
 
-function CriteriaSection({
-  criteria,
-  onCreated
-}: {
-  criteria: AdminBootstrap["criteria"];
-  onCreated: () => void;
-}) {
-  const criterionForm = useAdminForm(onCreated);
-  const optionForm = useAdminForm(onCreated);
+function CriteriaSection({ criteria, onSaved }: { criteria: AdminBootstrap["criteria"]; onSaved: () => void }) {
+  const criterionForm = useAdminForm(onSaved);
+  const optionForm = useAdminForm(onSaved);
+  const [editingCriterionId, setEditingCriterionId] = useState<string | null>(null);
+  const [editingOptionId, setEditingOptionId] = useState<string | null>(null);
   const optionCriteria = criteria.filter((criterion) => criterion.inputType === "OPTIONS");
 
-  async function handleCriterionSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleCriterionCreate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
-    const code = String(form.get("code") ?? "").trim();
-    const label = String(form.get("label") ?? "").trim();
-    const inputType = String(form.get("inputType") ?? "OPTIONS");
-    const displayOrder = Number(form.get("displayOrder") ?? 0);
-
+    const htmlForm = event.currentTarget;
+    const data = new FormData(htmlForm);
     await criterionForm.submit(async () => {
-      await postJson("/api/admin/criteria", { code, label, inputType, displayOrder });
-      event.currentTarget.reset();
+      await requestJson("POST", "/api/admin/criteria", {
+        code: String(data.get("code") ?? "").trim(),
+        label: String(data.get("label") ?? "").trim(),
+        inputType: String(data.get("inputType") ?? "OPTIONS"),
+        displayOrder: Number(data.get("displayOrder") ?? 0)
+      });
+      htmlForm.reset();
     }, "تمت إضافة المعيار بنجاح");
   }
 
-  async function handleOptionSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleCriterionUpdate(event: FormEvent<HTMLFormElement>, id: string) {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
-    const criterionId = String(form.get("criterionId") ?? "");
-    const label = String(form.get("label") ?? "").trim();
-    const value = String(form.get("value") ?? "").trim();
-    const scoreRaw = String(form.get("score") ?? "").trim();
-    const displayOrder = Number(form.get("displayOrder") ?? 0);
+    const data = new FormData(event.currentTarget);
+    await criterionForm.submit(async () => {
+      await requestJson("PATCH", `/api/admin/criteria/${id}`, {
+        label: String(data.get("label") ?? "").trim(),
+        displayOrder: Number(data.get("displayOrder") ?? 0),
+        isActive: data.get("isActive") === "on"
+      });
+      setEditingCriterionId(null);
+    }, "تم تحديث المعيار");
+  }
 
+  async function handleOptionCreate(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const htmlForm = event.currentTarget;
+    const data = new FormData(htmlForm);
+    const scoreRaw = String(data.get("score") ?? "").trim();
     await optionForm.submit(async () => {
-      await postJson("/api/admin/options", {
-        criterionId,
-        label,
-        value,
-        displayOrder,
+      await requestJson("POST", "/api/admin/options", {
+        criterionId: String(data.get("criterionId") ?? ""),
+        label: String(data.get("label") ?? "").trim(),
+        value: String(data.get("value") ?? "").trim(),
+        displayOrder: Number(data.get("displayOrder") ?? 0),
         ...(scoreRaw ? { score: Number(scoreRaw) } : {})
       });
-      event.currentTarget.reset();
+      htmlForm.reset();
     }, "تمت إضافة الخيار بنجاح");
   }
 
-  return (
-    <section className="rounded-lg border border-ink/10 bg-white p-4 lg:col-span-2">
-      <h2 className="text-lg font-bold">معايير التقييم</h2>
+  async function handleOptionUpdate(event: FormEvent<HTMLFormElement>, id: string) {
+    event.preventDefault();
+    const data = new FormData(event.currentTarget);
+    const scoreRaw = String(data.get("score") ?? "").trim();
+    await optionForm.submit(async () => {
+      await requestJson("PATCH", `/api/admin/options/${id}`, {
+        label: String(data.get("label") ?? "").trim(),
+        displayOrder: Number(data.get("displayOrder") ?? 0),
+        isActive: data.get("isActive") === "on",
+        score: scoreRaw ? Number(scoreRaw) : null
+      });
+      setEditingOptionId(null);
+    }, "تم تحديث الخيار");
+  }
 
+  return (
+    <section className="rounded-lg border border-ink/10 bg-white p-4">
+      <h2 className="text-lg font-bold">معايير التقييم</h2>
       <div className="mt-4 grid gap-4 lg:grid-cols-2">
-        <form className="grid gap-2 rounded-lg border border-ink/10 bg-paper p-3" onSubmit={handleCriterionSubmit}>
+        <form className="grid gap-2 rounded-lg border border-ink/10 bg-paper p-3" onSubmit={handleCriterionCreate}>
           <h3 className="font-bold">إضافة معيار</h3>
-          <label className="grid gap-1">
-            <span className={labelClass}>الرمز (إنجليزي)</span>
-            <input
-              className={fieldClass}
-              name="code"
-              required
-              minLength={2}
-              maxLength={50}
-              pattern="[a-z0-9_]+"
-              placeholder="memorization"
-            />
-          </label>
-          <label className="grid gap-1">
-            <span className={labelClass}>العنوان</span>
-            <input className={fieldClass} name="label" required minLength={2} maxLength={80} placeholder="الحفظ" />
-          </label>
-          <label className="grid gap-1">
-            <span className={labelClass}>نوع الإدخال</span>
-            <select className={fieldClass} name="inputType" defaultValue="OPTIONS">
-              <option value="OPTIONS">خيارات</option>
-              <option value="COUNTER">عداد رقمي</option>
-            </select>
-          </label>
-          <label className="grid gap-1">
-            <span className={labelClass}>ترتيب العرض</span>
-            <input className={fieldClass} name="displayOrder" type="number" min={0} max={999} defaultValue={0} />
-          </label>
-          <button className={buttonClass} type="submit" disabled={criterionForm.loading}>
-            {criterionForm.loading ? "جاري الحفظ..." : "إضافة معيار"}
-          </button>
+          <input className={fieldClass} name="code" required minLength={2} pattern="[a-z0-9_]+" placeholder="memorization" />
+          <input className={fieldClass} name="label" required minLength={2} placeholder="الحفظ" />
+          <select className={fieldClass} name="inputType" defaultValue="OPTIONS">
+            <option value="OPTIONS">خيارات</option>
+            <option value="COUNTER">عداد رقمي</option>
+          </select>
+          <input className={fieldClass} name="displayOrder" type="number" min={0} max={999} defaultValue={0} />
+          <button className={buttonClass} type="submit" disabled={criterionForm.loading}>إضافة معيار</button>
           {criterionForm.error ? <FormError message={criterionForm.error} /> : null}
           {criterionForm.success ? <FormSuccess message={criterionForm.success} /> : null}
         </form>
-
-        <form className="grid gap-2 rounded-lg border border-ink/10 bg-paper p-3" onSubmit={handleOptionSubmit}>
-          <h3 className="font-bold">إضافة خيار لمعيار</h3>
-          <label className="grid gap-1">
-            <span className={labelClass}>المعيار</span>
-            <select
-              className={fieldClass}
-              name="criterionId"
-              required
-              disabled={optionCriteria.length === 0}
-              defaultValue=""
-            >
-              <option value="">
-                {optionCriteria.length === 0 ? "أضف معيار خيارات أولاً" : "اختر المعيار"}
-              </option>
-              {optionCriteria.map((criterion) => (
-                <option key={criterion.id} value={criterion.id}>
-                  {criterion.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="grid gap-1">
-            <span className={labelClass}>التسمية</span>
-            <input className={fieldClass} name="label" required minLength={1} maxLength={80} placeholder="ممتاز" />
-          </label>
-          <label className="grid gap-1">
-            <span className={labelClass}>القيمة (إنجليزي)</span>
-            <input
-              className={fieldClass}
-              name="value"
-              required
-              minLength={1}
-              maxLength={80}
-              pattern="[a-z0-9_]+"
-              placeholder="excellent"
-            />
-          </label>
-          <label className="grid gap-1">
-            <span className={labelClass}>الدرجة (اختياري)</span>
-            <input className={fieldClass} name="score" type="number" min={-999} max={999} />
-          </label>
-          <label className="grid gap-1">
-            <span className={labelClass}>ترتيب العرض</span>
-            <input className={fieldClass} name="displayOrder" type="number" min={0} max={999} defaultValue={0} />
-          </label>
-          <button className={buttonClass} type="submit" disabled={optionForm.loading || optionCriteria.length === 0}>
-            {optionForm.loading ? "جاري الحفظ..." : "إضافة خيار"}
-          </button>
+        <form className="grid gap-2 rounded-lg border border-ink/10 bg-paper p-3" onSubmit={handleOptionCreate}>
+          <h3 className="font-bold">إضافة خيار</h3>
+          <select className={fieldClass} name="criterionId" required disabled={optionCriteria.length === 0} defaultValue="">
+            <option value="">{optionCriteria.length ? "اختر المعيار" : "أضف معيار خيارات أولاً"}</option>
+            {optionCriteria.map((criterion) => <option key={criterion.id} value={criterion.id}>{criterion.label}</option>)}
+          </select>
+          <input className={fieldClass} name="label" required placeholder="ممتاز" />
+          <input className={fieldClass} name="value" required pattern="[a-z0-9_]+" placeholder="excellent" />
+          <input className={fieldClass} name="score" type="number" min={-999} max={999} />
+          <input className={fieldClass} name="displayOrder" type="number" min={0} max={999} defaultValue={0} />
+          <button className={buttonClass} type="submit" disabled={optionForm.loading || optionCriteria.length === 0}>إضافة خيار</button>
           {optionForm.error ? <FormError message={optionForm.error} /> : null}
           {optionForm.success ? <FormSuccess message={optionForm.success} /> : null}
         </form>
       </div>
-
       <div className="mt-4 grid gap-3 md:grid-cols-2">
-        {criteria.length === 0 ? (
-          <p className="text-sm text-ink/60">لا توجد معايير بعد.</p>
-        ) : (
-          criteria.map((criterion) => (
-            <article key={criterion.id} className="rounded-lg border border-ink/10 bg-paper p-3">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <h3 className="font-bold">{criterion.label}</h3>
-                  <p className="text-xs text-ink/60">
-                    {criterion.code} · {criterion.inputType === "OPTIONS" ? "خيارات" : "عداد"}
-                  </p>
+        {criteria.map((criterion) => (
+          <article key={criterion.id} className="rounded-lg border border-ink/10 bg-paper p-3">
+            {editingCriterionId === criterion.id ? (
+              <form className="grid gap-2" onSubmit={(event) => void handleCriterionUpdate(event, criterion.id)}>
+                <p className="text-xs text-ink/60">{criterion.code} · {criterion.inputType}</p>
+                <input className={fieldClass} name="label" defaultValue={criterion.label} required />
+                <input className={fieldClass} name="displayOrder" type="number" defaultValue={criterion.displayOrder} />
+                <label className="flex items-center gap-2 text-sm font-semibold">
+                  <input type="checkbox" name="isActive" defaultChecked={criterion.isActive} />نشط
+                </label>
+                <div className="flex gap-2">
+                  <button className={buttonClass} type="submit" disabled={criterionForm.loading}>حفظ</button>
+                  <button className={ghostButtonClass} type="button" onClick={() => setEditingCriterionId(null)}>إلغاء</button>
                 </div>
-                <span className="rounded-md bg-white px-2 py-1 text-xs font-bold">{criterion.displayOrder}</span>
-              </div>
-              {criterion.options.length > 0 ? (
-                <div className="mt-3 flex flex-wrap gap-2">
+              </form>
+            ) : (
+              <>
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <h3 className="font-bold">{criterion.label}</h3>
+                    <p className="text-xs text-ink/60">{criterion.code} · {criterion.inputType === "OPTIONS" ? "خيارات" : "عداد"}</p>
+                  </div>
+                  <div className="flex flex-col items-end gap-2">
+                    <ActiveBadge isActive={criterion.isActive} />
+                    <button className={ghostButtonClass} type="button" onClick={() => setEditingCriterionId(criterion.id)}>تعديل</button>
+                  </div>
+                </div>
+                <div className="mt-3 space-y-2">
                   {criterion.options.map((option) => (
-                    <span key={option.id} className="rounded-md bg-white px-2 py-1 text-sm font-semibold">
-                      {option.label}
-                    </span>
+                    <div key={option.id} className="rounded-md bg-white p-2">
+                      {editingOptionId === option.id ? (
+                        <form className="grid gap-2" onSubmit={(event) => void handleOptionUpdate(event, option.id)}>
+                          <input className={fieldClass} name="label" defaultValue={option.label} required />
+                          <input className={fieldClass} name="score" type="number" defaultValue={option.score ?? ""} />
+                          <input className={fieldClass} name="displayOrder" type="number" defaultValue={option.displayOrder} />
+                          <label className="flex items-center gap-2 text-sm font-semibold">
+                            <input type="checkbox" name="isActive" defaultChecked={option.isActive} />نشط
+                          </label>
+                          <div className="flex gap-2">
+                            <button className={buttonClass} type="submit" disabled={optionForm.loading}>حفظ</button>
+                            <button className={ghostButtonClass} type="button" onClick={() => setEditingOptionId(null)}>إلغاء</button>
+                          </div>
+                        </form>
+                      ) : (
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-sm font-semibold">{option.label} ({option.value})</span>
+                          <button className={ghostButtonClass} type="button" onClick={() => setEditingOptionId(option.id)}>تعديل</button>
+                        </div>
+                      )}
+                    </div>
                   ))}
                 </div>
-              ) : (
-                <p className="mt-3 text-sm text-ink/60">
-                  {criterion.inputType === "COUNTER" ? "عداد رقمي بدون خيارات." : "لا توجد خيارات بعد."}
-                </p>
-              )}
-            </article>
-          ))
-        )}
+              </>
+            )}
+          </article>
+        ))}
       </div>
     </section>
   );
@@ -436,17 +515,49 @@ function CriteriaSection({
 
 export function AdminDashboard({ data }: { data: AdminBootstrap }) {
   const router = useRouter();
+  const [tab, setTab] = useState<"circles" | "teachers" | "students" | "criteria">("circles");
 
   function refresh() {
     router.refresh();
   }
 
+  const tabs = [
+    { id: "circles" as const, label: "الحلقات", count: data.circles.length },
+    { id: "teachers" as const, label: "المعلمون", count: data.teachers.length },
+    { id: "students" as const, label: "الطلاب", count: data.students.length },
+    { id: "criteria" as const, label: "المعايير", count: data.criteria.length }
+  ];
+
   return (
-    <div className="grid gap-4 lg:grid-cols-2">
-      <CircleSection circles={data.circles} onCreated={refresh} />
-      <TeacherSection circles={data.circles} teachers={data.teachers} onCreated={refresh} />
-      <StudentSection circles={data.circles} students={data.students} onCreated={refresh} />
-      <CriteriaSection criteria={data.criteria} onCreated={refresh} />
+    <div>
+      <nav className="sticky top-0 z-20 -mx-4 border-b border-ink/10 bg-paper/95 px-4 py-3 backdrop-blur sm:-mx-0 sm:rounded-lg sm:border sm:px-3">
+        <div className="flex gap-2 overflow-x-auto">
+          {tabs.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              className={`shrink-0 rounded-lg px-4 py-2 text-sm font-bold ${
+                tab === item.id ? "bg-teal text-white" : "bg-white text-ink border border-ink/10"
+              }`}
+              onClick={() => setTab(item.id)}
+            >
+              {item.label}
+              <span className="mr-1 text-xs opacity-80">({item.count})</span>
+            </button>
+          ))}
+        </div>
+      </nav>
+
+      <div className="mt-4 max-w-3xl">
+        {tab === "circles" ? <CircleSection circles={data.circles} onSaved={refresh} /> : null}
+        {tab === "teachers" ? (
+          <TeacherSection circles={data.circles} teachers={data.teachers} onSaved={refresh} />
+        ) : null}
+        {tab === "students" ? (
+          <StudentSection circles={data.circles} students={data.students} onSaved={refresh} />
+        ) : null}
+        {tab === "criteria" ? <CriteriaSection criteria={data.criteria} onSaved={refresh} /> : null}
+      </div>
     </div>
   );
 }

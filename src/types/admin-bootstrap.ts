@@ -2,7 +2,14 @@ import type { InputType } from "@prisma/client";
 
 export type AdminBootstrap = {
   circles: { id: string; name: string; isActive: boolean }[];
-  teachers: { id: string; fullName: string }[];
+  teachers: {
+    id: string;
+    fullName: string;
+    email: string;
+    phone: string | null;
+    circleId: string | null;
+    isActive: boolean;
+  }[];
   students: {
     id: string;
     fullName: string;

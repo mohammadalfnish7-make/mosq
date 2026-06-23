@@ -42,6 +42,47 @@ export const optionSchema = z.object({
   displayOrder: z.number().int().min(0).max(999).default(0)
 });
 
+export const circleUpdateSchema = z.object({
+  name: z.string().trim().min(2).max(80).optional(),
+  isActive: z.boolean().optional()
+});
+
+export const studentUpdateSchema = studentSchema.extend({
+  isActive: z.boolean().optional()
+});
+
+export const teacherUpdateSchema = z.object({
+  fullName: z.string().trim().min(2).max(120),
+  email: z.string().trim().email().max(255),
+  phone: z.string().trim().max(30).optional().nullable(),
+  password: z.string().min(8).max(128).optional(),
+  circleId: uuid.nullable().optional(),
+  isActive: z.boolean().optional()
+});
+
+export const criterionUpdateSchema = z.object({
+  label: z.string().trim().min(2).max(80),
+  displayOrder: z.number().int().min(0).max(999),
+  isActive: z.boolean().optional()
+});
+
+export const optionUpdateSchema = z.object({
+  label: z.string().trim().min(1).max(80),
+  score: z.number().min(-999).max(999).optional().nullable(),
+  displayOrder: z.number().int().min(0).max(999),
+  isActive: z.boolean().optional()
+});
+
+async function assertTenantCircle(tenantId: string, circleId: string) {
+  const circle = await prisma.circle.findFirst({
+    where: { tenantId, id: circleId },
+    select: { id: true }
+  });
+  if (!circle) {
+    throw new HttpError(400, "الحلقة غير صالحة");
+  }
+}
+
 export async function listAdminBootstrap(): Promise<AdminBootstrap> {
   const auth = await getAuthContext(UserRole.ADMIN);
 
@@ -52,9 +93,20 @@ export async function listAdminBootstrap(): Promise<AdminBootstrap> {
       select: { id: true, name: true, isActive: true }
     }),
     prisma.user.findMany({
-      where: { tenantId: auth.tenantId, role: UserRole.TEACHER, isActive: true },
+      where: { tenantId: auth.tenantId, role: UserRole.TEACHER },
       orderBy: { createdAt: "asc" },
-      select: { id: true, fullName: true }
+      select: {
+        id: true,
+        fullName: true,
+        email: true,
+        phone: true,
+        isActive: true,
+        circleAssignments: {
+          take: 1,
+          orderBy: { createdAt: "asc" },
+          select: { circleId: true }
+        }
+      }
     }),
     prisma.student.findMany({
       where: { tenantId: auth.tenantId },
@@ -81,7 +133,14 @@ export async function listAdminBootstrap(): Promise<AdminBootstrap> {
 
   return {
     circles,
-    teachers,
+    teachers: teachers.map((teacher) => ({
+      id: teacher.id,
+      fullName: teacher.fullName,
+      email: teacher.email,
+      phone: teacher.phone,
+      isActive: teacher.isActive,
+      circleId: teacher.circleAssignments[0]?.circleId ?? null
+    })),
     students,
     criteria: criteria.map((criterion) => ({
       ...criterion,
@@ -216,6 +275,171 @@ export async function createOption(input: z.infer<typeof optionSchema>) {
     entityType: "EvaluationOption",
     entityId: option.id,
     metadata: { criterionId: option.criterionId, value: option.value }
+  });
+
+  return option;
+}
+
+export async function updateCircle(id: string, input: z.infer<typeof circleUpdateSchema>) {
+  const auth = await getAuthContext(UserRole.ADMIN);
+  const circle = await prisma.circle.update({
+    where: { tenantId_id: { tenantId: auth.tenantId, id } },
+    data: {
+      ...(input.name !== undefined ? { name: input.name } : {}),
+      ...(input.isActive !== undefined ? { isActive: input.isActive } : {})
+    },
+    select: { id: true, name: true, isActive: true }
+  });
+
+  writeAuditAsync({
+    tenantId: auth.tenantId,
+    actorId: auth.userId,
+    action: AuditAction.CIRCLE_UPDATE,
+    entityType: "Circle",
+    entityId: circle.id,
+    metadata: { name: circle.name, isActive: circle.isActive }
+  });
+
+  return circle;
+}
+
+export async function updateStudent(id: string, input: z.infer<typeof studentUpdateSchema>) {
+  const auth = await getAuthContext(UserRole.ADMIN);
+  await assertTenantCircle(auth.tenantId, input.circleId);
+
+  const student = await prisma.student.update({
+    where: { tenantId_id: { tenantId: auth.tenantId, id } },
+    data: {
+      fullName: input.fullName,
+      circleId: input.circleId,
+      guardianPhone: input.guardianPhone ?? null,
+      ...(input.isActive !== undefined ? { isActive: input.isActive } : {})
+    },
+    select: { id: true, fullName: true, circleId: true, isActive: true }
+  });
+
+  writeAuditAsync({
+    tenantId: auth.tenantId,
+    actorId: auth.userId,
+    action: AuditAction.STUDENT_UPDATE,
+    entityType: "Student",
+    entityId: student.id,
+    metadata: { fullName: student.fullName, circleId: student.circleId, isActive: student.isActive }
+  });
+
+  return student;
+}
+
+export async function updateTeacher(id: string, input: z.infer<typeof teacherUpdateSchema>) {
+  const auth = await getAuthContext(UserRole.ADMIN);
+  const email = input.email.toLowerCase();
+
+  const existing = await prisma.user.findFirst({
+    where: { tenantId: auth.tenantId, id, role: UserRole.TEACHER }
+  });
+  if (!existing) {
+    throw new HttpError(404, "المعلم غير موجود");
+  }
+
+  const emailTaken = await prisma.user.findFirst({
+    where: { email, id: { not: id } }
+  });
+  if (emailTaken) {
+    throw new HttpError(409, "البريد الإلكتروني مستخدم بالفعل");
+  }
+
+  if (input.circleId) {
+    await assertTenantCircle(auth.tenantId, input.circleId);
+  }
+
+  const passwordHash = input.password ? await hashPassword(input.password) : undefined;
+
+  return prisma.$transaction(async (tx) => {
+    const teacher = await tx.user.update({
+      where: { tenantId_id: { tenantId: auth.tenantId, id } },
+      data: {
+        fullName: input.fullName,
+        email,
+        phone: input.phone ?? null,
+        ...(passwordHash ? { passwordHash } : {}),
+        ...(input.isActive !== undefined ? { isActive: input.isActive } : {})
+      },
+      select: { id: true, fullName: true, email: true, phone: true, isActive: true }
+    });
+
+    if (input.circleId !== undefined) {
+      await tx.circleTeacher.deleteMany({
+        where: { tenantId: auth.tenantId, teacherId: id }
+      });
+      if (input.circleId) {
+        await tx.circleTeacher.create({
+          data: { tenantId: auth.tenantId, circleId: input.circleId, teacherId: id }
+        });
+      }
+    }
+
+    writeAuditAsync({
+      tenantId: auth.tenantId,
+      actorId: auth.userId,
+      action: AuditAction.TEACHER_UPDATE,
+      entityType: "User",
+      entityId: teacher.id,
+      metadata: {
+        email: teacher.email,
+        circleId: input.circleId ?? null,
+        isActive: teacher.isActive,
+        passwordChanged: Boolean(passwordHash)
+      }
+    });
+
+    return teacher;
+  });
+}
+
+export async function updateCriterion(id: string, input: z.infer<typeof criterionUpdateSchema>) {
+  const auth = await getAuthContext(UserRole.ADMIN);
+  const criterion = await prisma.evaluationCriterion.update({
+    where: { tenantId_id: { tenantId: auth.tenantId, id } },
+    data: {
+      label: input.label,
+      displayOrder: input.displayOrder,
+      ...(input.isActive !== undefined ? { isActive: input.isActive } : {})
+    },
+    select: { id: true, code: true, label: true, displayOrder: true, isActive: true }
+  });
+
+  writeAuditAsync({
+    tenantId: auth.tenantId,
+    actorId: auth.userId,
+    action: AuditAction.CRITERION_UPDATE,
+    entityType: "EvaluationCriterion",
+    entityId: criterion.id,
+    metadata: { label: criterion.label, isActive: criterion.isActive }
+  });
+
+  return criterion;
+}
+
+export async function updateOption(id: string, input: z.infer<typeof optionUpdateSchema>) {
+  const auth = await getAuthContext(UserRole.ADMIN);
+  const option = await prisma.evaluationOption.update({
+    where: { tenantId_id: { tenantId: auth.tenantId, id } },
+    data: {
+      label: input.label,
+      displayOrder: input.displayOrder,
+      score: input.score ?? null,
+      ...(input.isActive !== undefined ? { isActive: input.isActive } : {})
+    },
+    select: { id: true, label: true, value: true, criterionId: true, isActive: true }
+  });
+
+  writeAuditAsync({
+    tenantId: auth.tenantId,
+    actorId: auth.userId,
+    action: AuditAction.OPTION_UPDATE,
+    entityType: "EvaluationOption",
+    entityId: option.id,
+    metadata: { label: option.label, isActive: option.isActive }
   });
 
   return option;
