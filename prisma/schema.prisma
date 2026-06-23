@@ -1,0 +1,218 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ADMIN
+  TEACHER
+}
+
+enum InputType {
+  OPTIONS
+  COUNTER
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  LATE
+  EXCUSED
+}
+
+model Tenant {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  users              User[]
+  circles            Circle[]
+  students           Student[]
+  criteria           EvaluationCriterion[]
+  options            EvaluationOption[]
+  sessions           EvaluationSession[]
+  attendanceEntries  AttendanceEntry[]
+  evaluationEntries  EvaluationEntry[]
+
+  @@map("tenants")
+}
+
+model User {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  fullName  String   @map("full_name")
+  phone     String?
+  role      UserRole
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  tenant             Tenant @relation(fields: [tenantId], references: [id])
+  circleAssignments  CircleTeacher[]
+  sessions           EvaluationSession[]
+  attendanceCreated  AttendanceEntry[]
+  evaluationCreated  EvaluationEntry[]
+
+  @@unique([tenantId, id])
+  @@index([tenantId, role])
+  @@map("users")
+}
+
+model Circle {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  name      String
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  tenant       Tenant @relation(fields: [tenantId], references: [id])
+  teachers     CircleTeacher[]
+  students     Student[]
+  sessions     EvaluationSession[]
+
+  @@unique([tenantId, id])
+  @@index([tenantId, isActive])
+  @@map("circles")
+}
+
+model CircleTeacher {
+  tenantId  String   @map("tenant_id") @db.Uuid
+  circleId  String   @map("circle_id") @db.Uuid
+  teacherId String   @map("teacher_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+
+  circle  Circle @relation(fields: [tenantId, circleId], references: [tenantId, id])
+  teacher User   @relation(fields: [tenantId, teacherId], references: [tenantId, id])
+
+  @@id([tenantId, circleId, teacherId])
+  @@index([tenantId, teacherId])
+  @@map("circle_teachers")
+}
+
+model Student {
+  id            String   @id @default(uuid()) @db.Uuid
+  tenantId      String   @map("tenant_id") @db.Uuid
+  circleId      String   @map("circle_id") @db.Uuid
+  fullName      String   @map("full_name")
+  guardianPhone String?  @map("guardian_phone")
+  isActive      Boolean  @default(true) @map("is_active")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  tenant             Tenant @relation(fields: [tenantId], references: [id])
+  circle             Circle @relation(fields: [tenantId, circleId], references: [tenantId, id])
+  attendanceEntries  AttendanceEntry[]
+  evaluationEntries  EvaluationEntry[]
+
+  @@unique([tenantId, id])
+  @@index([tenantId, circleId, isActive])
+  @@map("students")
+}
+
+model EvaluationCriterion {
+  id           String    @id @default(uuid()) @db.Uuid
+  tenantId     String    @map("tenant_id") @db.Uuid
+  code         String
+  label        String
+  inputType    InputType @map("input_type")
+  displayOrder Int       @default(0) @map("display_order")
+  isActive     Boolean   @default(true) @map("is_active")
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  tenant             Tenant @relation(fields: [tenantId], references: [id])
+  options            EvaluationOption[]
+  evaluationEntries  EvaluationEntry[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, code])
+  @@index([tenantId, isActive, displayOrder])
+  @@map("evaluation_criteria")
+}
+
+model EvaluationOption {
+  id           String   @id @default(uuid()) @db.Uuid
+  tenantId     String   @map("tenant_id") @db.Uuid
+  criterionId  String   @map("criterion_id") @db.Uuid
+  label        String
+  value        String
+  score        Decimal? @db.Decimal(6, 2)
+  displayOrder Int      @default(0) @map("display_order")
+  isActive     Boolean  @default(true) @map("is_active")
+
+  tenant             Tenant              @relation(fields: [tenantId], references: [id])
+  criterion          EvaluationCriterion @relation(fields: [tenantId, criterionId], references: [tenantId, id], onDelete: Cascade)
+  evaluationEntries  EvaluationEntry[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, criterionId, value])
+  @@index([tenantId, criterionId, isActive, displayOrder])
+  @@map("evaluation_options")
+}
+
+model EvaluationSession {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @map("tenant_id") @db.Uuid
+  circleId    String   @map("circle_id") @db.Uuid
+  teacherId   String   @map("teacher_id") @db.Uuid
+  sessionDate DateTime @map("session_date") @db.Date
+  periodCode  String   @default("default") @map("period_code")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  tenant             Tenant @relation(fields: [tenantId], references: [id])
+  circle             Circle @relation(fields: [tenantId, circleId], references: [tenantId, id])
+  teacher            User   @relation(fields: [tenantId, teacherId], references: [tenantId, id])
+  attendanceEntries  AttendanceEntry[]
+  evaluationEntries  EvaluationEntry[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, circleId, sessionDate, periodCode])
+  @@index([tenantId, teacherId, sessionDate])
+  @@map("evaluation_sessions")
+}
+
+model AttendanceEntry {
+  id        String           @id @default(uuid()) @db.Uuid
+  tenantId  String           @map("tenant_id") @db.Uuid
+  sessionId String           @map("session_id") @db.Uuid
+  studentId String           @map("student_id") @db.Uuid
+  status    AttendanceStatus
+  createdBy String           @map("created_by") @db.Uuid
+  createdAt DateTime         @default(now()) @map("created_at")
+  updatedAt DateTime         @updatedAt @map("updated_at")
+
+  tenant   Tenant            @relation(fields: [tenantId], references: [id])
+  session  EvaluationSession @relation(fields: [tenantId, sessionId], references: [tenantId, id], onDelete: Cascade)
+  student  Student           @relation(fields: [tenantId, studentId], references: [tenantId, id])
+  creator  User              @relation(fields: [tenantId, createdBy], references: [tenantId, id])
+
+  @@unique([tenantId, sessionId, studentId])
+  @@index([tenantId, studentId])
+  @@map("attendance_entries")
+}
+
+model EvaluationEntry {
+  id           String   @id @default(uuid()) @db.Uuid
+  tenantId     String   @map("tenant_id") @db.Uuid
+  sessionId    String   @map("session_id") @db.Uuid
+  studentId    String   @map("student_id") @db.Uuid
+  criterionId  String   @map("criterion_id") @db.Uuid
+  optionId     String?  @map("option_id") @db.Uuid
+  counterValue Int?     @map("counter_value")
+  createdBy    String   @map("created_by") @db.Uuid
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  tenant    Tenant              @relation(fields: [tenantId], references: [id])
+  session   EvaluationSession   @relation(fields: [tenantId, sessionId], references: [tenantId, id], onDelete: Cascade)
+  student   Student             @relation(fields: [tenantId, studentId], references: [tenantId, id])
+  criterion EvaluationCriterion @relation(fields: [tenantId, criterionId], references: [tenantId, id])
+  option    EvaluationOption?   @relation(fields: [tenantId, optionId], references: [tenantId, id])
+  creator   User                @relation(fields: [tenantId, createdBy], references: [tenantId, id])
+
+  @@unique([tenantId, sessionId, studentId, criterionId])
+  @@index([tenantId, studentId])
+  @@index([tenantId, criterionId])
+  @@map("evaluation_entries")
+}
