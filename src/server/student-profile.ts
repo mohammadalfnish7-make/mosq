@@ -2,6 +2,10 @@ import { StudentApprovalStatus, SurahStatus, UserRole } from "@prisma/client";
 import { randomBytes } from "crypto";
 import { ATTENDANCE_LABELS, periodLabel } from "@/lib/attendance";
 import { pickCurrentSurah } from "@/lib/current-surah";
+import {
+  loadEvaluationDerivedProgress,
+  mergeSurahProgressRows
+} from "@/lib/memorization-progress";
 import { gradeLabel } from "@/lib/syrian-grades";
 import { SURAH_STATUS_LABELS } from "@/lib/surahs";
 import { prisma } from "@/lib/prisma";
@@ -68,7 +72,7 @@ async function loadStudentProfile(
   student: StudentRow,
   options: { includeShareUrl: boolean; baseUrl?: string }
 ): Promise<StudentProfile> {
-  const [progressRows, surahs, attendanceRows, evaluationRows] = await Promise.all([
+  const [progressRows, derivedByStudent, surahs, attendanceRows, evaluationRows] = await Promise.all([
     prisma.studentSurahProgress.findMany({
       where: { tenantId: student.tenantId, studentId: student.id },
       select: {
@@ -78,6 +82,7 @@ async function loadStudentProfile(
         surah: { select: { number: true, nameAr: true, juz: true } }
       }
     }),
+    loadEvaluationDerivedProgress(prisma, student.tenantId, [student.id]),
     prisma.surah.findMany({ orderBy: { number: "asc" }, select: { number: true, nameAr: true, juz: true } }),
     prisma.attendanceEntry.findMany({
       where: { tenantId: student.tenantId, studentId: student.id },
@@ -102,8 +107,12 @@ async function loadStudentProfile(
     })
   ]);
 
-  const progressBySurah = new Map(progressRows.map((row) => [row.surahNumber, row]));
-  const currentSurah = pickCurrentSurah(progressRows);
+  const mergedProgress = mergeSurahProgressRows(
+    progressRows,
+    derivedByStudent.get(student.id) ?? []
+  );
+  const progressBySurah = new Map(mergedProgress.map((row) => [row.surahNumber, row]));
+  const currentSurah = pickCurrentSurah(mergedProgress);
 
   const allMemorizationItems = surahs.map((surah) => {
     const progress = progressBySurah.get(surah.number);

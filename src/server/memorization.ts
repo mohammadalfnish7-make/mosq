@@ -2,6 +2,10 @@ import { StudentApprovalStatus, SurahStatus, UserRole } from "@prisma/client";
 import { z } from "zod";
 import { AuditAction, writeAuditAsync } from "@/lib/audit";
 import { pickCurrentSurah } from "@/lib/current-surah";
+import {
+  loadEvaluationDerivedProgress,
+  mergeSurahProgressRows
+} from "@/lib/memorization-progress";
 import { prisma } from "@/lib/prisma";
 import { getAuthContext, assertTeacherCircleAccess } from "@/server/auth";
 import { HttpError } from "@/server/http";
@@ -49,7 +53,7 @@ export async function getStudentMemorizationMap(input: z.infer<typeof memorizati
   await assertTeacherCircleAccess(auth.tenantId, auth.userId, input.circleId);
   const student = await assertStudentInCircle(auth.tenantId, input.circleId, input.studentId);
 
-  const [surahs, progressRows] = await Promise.all([
+  const [surahs, progressRows, derivedByStudent] = await Promise.all([
     prisma.surah.findMany({ orderBy: { number: "asc" } }),
     prisma.studentSurahProgress.findMany({
       where: { tenantId: auth.tenantId, studentId: input.studentId },
@@ -58,15 +62,21 @@ export async function getStudentMemorizationMap(input: z.infer<typeof memorizati
         status: true,
         notes: true,
         updatedAt: true,
-        surah: { select: { number: true, nameAr: true } }
+        surah: { select: { number: true, nameAr: true, juz: true } }
       }
-    })
+    }),
+    loadEvaluationDerivedProgress(prisma, auth.tenantId, [input.studentId])
   ]);
 
-  const progressBySurah = new Map(progressRows.map((row) => [row.surahNumber, row]));
+  const mergedProgress = mergeSurahProgressRows(
+    progressRows,
+    derivedByStudent.get(input.studentId) ?? []
+  );
+  const progressBySurah = new Map(mergedProgress.map((row) => [row.surahNumber, row]));
 
   const items = surahs.map((surah) => {
     const progress = progressBySurah.get(surah.number);
+    const stored = progressRows.find((row) => row.surahNumber === surah.number);
     return {
       number: surah.number,
       nameAr: surah.nameAr,
@@ -74,7 +84,7 @@ export async function getStudentMemorizationMap(input: z.infer<typeof memorizati
       ayahCount: surah.ayahCount,
       juz: surah.juz,
       status: progress?.status ?? SurahStatus.NOT_STARTED,
-      notes: progress?.notes ?? null,
+      notes: stored?.notes ?? null,
       updatedAt: progress?.updatedAt ?? null
     };
   });
@@ -87,7 +97,7 @@ export async function getStudentMemorizationMap(input: z.infer<typeof memorizati
     notStarted: items.filter((item) => item.status === SurahStatus.NOT_STARTED).length
   };
 
-  const currentSurah = pickCurrentSurah(progressRows);
+  const currentSurah = pickCurrentSurah(mergedProgress);
 
   return {
     student: { id: student.id, fullName: student.fullName },

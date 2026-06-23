@@ -2,6 +2,11 @@ import { Prisma, StudentApprovalStatus, SurahStatus, UserRole } from "@prisma/cl
 import { z } from "zod";
 import { AuditAction, writeAuditAsync } from "@/lib/audit";
 import { mapCurrentSurahsByStudent } from "@/lib/current-surah";
+import {
+  buildMemorizationProgressUpserts,
+  loadEvaluationDerivedProgress,
+  mergeSurahProgressRows
+} from "@/lib/memorization-progress";
 import { prisma } from "@/lib/prisma";
 import { getAuthContext, assertTeacherCircleAccess } from "@/server/auth";
 import { HttpError } from "@/server/http";
@@ -89,7 +94,7 @@ export async function getTeacherSessionForm(input: {
 
   const studentIds = students.map((student) => student.id);
 
-  const [surahs, progressRows] = await Promise.all([
+  const [surahs, progressRows, derivedByStudent] = await Promise.all([
     prisma.surah.findMany({
       orderBy: { number: "asc" },
       select: { number: true, nameAr: true }
@@ -108,13 +113,24 @@ export async function getTeacherSessionForm(input: {
             surahNumber: true,
             status: true,
             updatedAt: true,
-            surah: { select: { number: true, nameAr: true } }
+            surah: { select: { number: true, nameAr: true, juz: true } }
           }
         })
-      : Promise.resolve([])
+      : Promise.resolve([]),
+    loadEvaluationDerivedProgress(prisma, auth.tenantId, studentIds)
   ]);
 
-  const currentSurahByStudent = mapCurrentSurahsByStudent(progressRows);
+  const progressRowsForCurrentSurah = studentIds.flatMap((studentId) => {
+    const stored = progressRows
+      .filter((row) => row.studentId === studentId)
+      .map(({ studentId: _studentId, ...row }) => row);
+    const merged = mergeSurahProgressRows(stored, derivedByStudent.get(studentId) ?? []);
+    return merged
+      .filter((row) => row.status !== SurahStatus.NOT_STARTED)
+      .map((row) => ({ ...row, studentId }));
+  });
+
+  const currentSurahByStudent = mapCurrentSurahsByStudent(progressRowsForCurrentSurah);
   for (const student of students) {
     currentSurahByStudent[student.id] ??= null;
   }
@@ -175,7 +191,7 @@ export async function bulkSaveTeacherSession(input: BulkSaveInput) {
     }),
     prisma.evaluationOption.findMany({
       where: { tenantId: auth.tenantId, id: { in: [...optionIds] }, isActive: true },
-      select: { id: true, criterionId: true }
+      select: { id: true, criterionId: true, value: true }
     })
   ]);
 
@@ -300,7 +316,15 @@ export async function bulkSaveTeacherSession(input: BulkSaveInput) {
       })
     );
 
-    await Promise.all([...attendanceOps, ...evaluationOps]);
+    const memorizationProgressOps = buildMemorizationProgressUpserts(tx, {
+      tenantId: auth.tenantId,
+      teacherId: auth.userId,
+      evaluations: input.evaluations,
+      criteriaById,
+      optionsById
+    });
+
+    await Promise.all([...attendanceOps, ...evaluationOps, ...memorizationProgressOps]);
 
     const result = {
       sessionId: session.id,
