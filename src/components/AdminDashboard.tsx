@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { AdminBootstrap } from "@/types/admin-bootstrap";
 import { SYRIAN_GRADES, SYRIAN_GRADE_STAGE_LABELS, gradeLabel } from "@/lib/syrian-grades";
@@ -85,14 +86,16 @@ function ApprovalBadge({ status }: { status: StudentApprovalStatus }) {
   );
 }
 
-function GradeSelect({ name, defaultValue = "" }: { name: string; defaultValue?: string }) {
+function GradeSelect({ name, defaultValue = "", required = true }: { name: string; defaultValue?: string; required?: boolean }) {
   const stages = ["kindergarten", "basic", "secondary"] as const;
 
   return (
     <label className="grid gap-1">
-      <span className={labelClass}>الصف الدراسي (سوريا)</span>
-      <select className={fieldClass} name={name} defaultValue={defaultValue}>
-        <option value="">بدون تحديد</option>
+      <span className={labelClass}>الصف الدراسي (سوريا) *</span>
+      <select className={fieldClass} name={name} defaultValue={defaultValue} required={required}>
+        <option value="" disabled>
+          اختر الصف
+        </option>
         {stages.map((stage) => (
           <optgroup key={stage} label={SYRIAN_GRADE_STAGE_LABELS[stage]}>
             {SYRIAN_GRADES.filter((grade) => grade.stage === stage).map((grade) => (
@@ -116,7 +119,7 @@ function CircleSection({ circles, onSaved }: { circles: AdminBootstrap["circles"
     const htmlForm = event.currentTarget;
     const data = new FormData(htmlForm);
     const name = String(data.get("name") ?? "").trim();
-    const gradeCode = String(data.get("gradeCode") ?? "").trim() || null;
+    const gradeCode = String(data.get("gradeCode") ?? "").trim();
     await form.submit(async () => {
       await requestJson("POST", "/api/admin/circles", { name, gradeCode });
       htmlForm.reset();
@@ -128,7 +131,7 @@ function CircleSection({ circles, onSaved }: { circles: AdminBootstrap["circles"
     event.preventDefault();
     const data = new FormData(event.currentTarget);
     const name = String(data.get("name") ?? "").trim();
-    const gradeCode = String(data.get("gradeCode") ?? "").trim() || null;
+    const gradeCode = String(data.get("gradeCode") ?? "").trim();
     const isActive = data.get("isActive") === "on";
     await form.submit(async () => {
       await requestJson("PATCH", `/api/admin/circles/${id}`, { name, gradeCode, isActive });
@@ -175,7 +178,11 @@ function CircleSection({ circles, onSaved }: { circles: AdminBootstrap["circles"
                     <span className="rounded-md bg-white px-2 py-0.5 text-xs font-bold text-teal">
                       {gradeLabel(circle.gradeCode)}
                     </span>
-                  ) : null}
+                  ) : (
+                    <span className="rounded-md bg-amber-100 px-2 py-0.5 text-xs font-bold text-amber-900">
+                      الصف غير محدد
+                    </span>
+                  )}
                   <ActiveBadge isActive={circle.isActive} />
                 </div>
                 <button className={ghostButtonClass} type="button" onClick={() => setEditingId(circle.id)}>تعديل</button>
@@ -419,6 +426,9 @@ function StudentSection({
                         اعتماد
                       </button>
                     ) : null}
+                    <Link className={ghostButtonClass} href={`/admin/students/${student.id}`}>
+                      ملف الطالب
+                    </Link>
                     <button className={ghostButtonClass} type="button" onClick={() => setEditingId(student.id)}>تعديل</button>
                   </div>
                 </div>

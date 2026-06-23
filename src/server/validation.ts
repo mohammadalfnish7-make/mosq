@@ -19,7 +19,8 @@ export const evaluationEntrySchema = z
     studentId: uuid,
     criterionId: uuid,
     optionId: uuid.optional(),
-    counterValue: z.number().int().min(0).max(999).optional()
+    counterValue: z.number().int().min(0).max(999).optional(),
+    surahNumber: z.number().int().min(1).max(114).optional()
   })
   .refine((entry) => Boolean(entry.optionId) !== (entry.counterValue !== undefined), {
     message: "Send exactly one of optionId or counterValue"

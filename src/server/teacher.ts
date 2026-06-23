@@ -1,6 +1,7 @@
-import { Prisma, StudentApprovalStatus, UserRole } from "@prisma/client";
+import { Prisma, StudentApprovalStatus, SurahStatus, UserRole } from "@prisma/client";
 import { z } from "zod";
 import { AuditAction, writeAuditAsync } from "@/lib/audit";
+import { mapCurrentSurahsByStudent } from "@/lib/current-surah";
 import { prisma } from "@/lib/prisma";
 import { getAuthContext, assertTeacherCircleAccess } from "@/server/auth";
 import { HttpError } from "@/server/http";
@@ -49,6 +50,7 @@ export async function getTeacherSessionForm(input: {
       orderBy: [{ displayOrder: "asc" }, { createdAt: "asc" }],
       select: {
         id: true,
+        code: true,
         label: true,
         inputType: true,
         options: {
@@ -77,12 +79,45 @@ export async function getTeacherSessionForm(input: {
             studentId: true,
             criterionId: true,
             optionId: true,
-            counterValue: true
+            counterValue: true,
+            surahNumber: true
           }
         }
       }
     })
   ]);
+
+  const studentIds = students.map((student) => student.id);
+
+  const [surahs, progressRows] = await Promise.all([
+    prisma.surah.findMany({
+      orderBy: { number: "asc" },
+      select: { number: true, nameAr: true }
+    }),
+    studentIds.length
+      ? prisma.studentSurahProgress.findMany({
+          where: {
+            tenantId: auth.tenantId,
+            studentId: { in: studentIds },
+            status: {
+              in: [SurahStatus.IN_PROGRESS, SurahStatus.NEEDS_REVISION, SurahStatus.MEMORIZED]
+            }
+          },
+          select: {
+            studentId: true,
+            surahNumber: true,
+            status: true,
+            updatedAt: true,
+            surah: { select: { number: true, nameAr: true } }
+          }
+        })
+      : Promise.resolve([])
+  ]);
+
+  const currentSurahByStudent = mapCurrentSurahsByStudent(progressRows);
+  for (const student of students) {
+    currentSurahByStudent[student.id] ??= null;
+  }
 
   if (!circle) {
     throw new HttpError(404, "Circle not found");
@@ -91,9 +126,14 @@ export async function getTeacherSessionForm(input: {
   return {
     circle,
     session: session ? { id: session.id } : null,
-    students,
+    students: students.map((student) => ({
+      ...student,
+      currentSurah: currentSurahByStudent[student.id] ?? null
+    })),
+    surahs,
     criteria: criteria.map((criterion) => ({
       id: criterion.id,
+      code: criterion.code,
       label: criterion.label,
       inputType: criterion.inputType,
       options: criterion.options
@@ -131,7 +171,7 @@ export async function bulkSaveTeacherSession(input: BulkSaveInput) {
     }),
     prisma.evaluationCriterion.findMany({
       where: { tenantId: auth.tenantId, id: { in: [...criterionIds] }, isActive: true },
-      select: { id: true, inputType: true }
+      select: { id: true, code: true, inputType: true }
     }),
     prisma.evaluationOption.findMany({
       where: { tenantId: auth.tenantId, id: { in: [...optionIds] }, isActive: true },
@@ -167,6 +207,23 @@ export async function bulkSaveTeacherSession(input: BulkSaveInput) {
 
     if (entry.optionId && optionsById.get(entry.optionId)?.criterionId !== entry.criterionId) {
       throw new HttpError(400, "Option does not belong to criterion");
+    }
+
+    if (criterion.code === "memorization" && entry.optionId && !entry.surahNumber) {
+      throw new HttpError(400, "يجب اختيار السورة عند تقييم الحفظ");
+    }
+  }
+
+  const surahNumbers = new Set(
+    input.evaluations.flatMap((entry) => (entry.surahNumber ? [entry.surahNumber] : []))
+  );
+  if (surahNumbers.size > 0) {
+    const surahs = await prisma.surah.findMany({
+      where: { number: { in: [...surahNumbers] } },
+      select: { number: true }
+    });
+    if (surahs.length !== surahNumbers.size) {
+      throw new HttpError(400, "رقم سورة غير صالح");
     }
   }
 
@@ -227,6 +284,7 @@ export async function bulkSaveTeacherSession(input: BulkSaveInput) {
         update: {
           optionId: entry.optionId ?? null,
           counterValue: entry.counterValue ?? null,
+          surahNumber: entry.surahNumber ?? null,
           createdBy: auth.userId
         },
         create: {
@@ -236,6 +294,7 @@ export async function bulkSaveTeacherSession(input: BulkSaveInput) {
           criterionId: entry.criterionId,
           optionId: entry.optionId ?? null,
           counterValue: entry.counterValue ?? null,
+          surahNumber: entry.surahNumber ?? null,
           createdBy: auth.userId
         }
       })

@@ -118,8 +118,9 @@ model Student {
   circleId       String                @map("circle_id") @db.Uuid
   fullName       String                @map("full_name")
   guardianPhone  String?               @map("guardian_phone")
-  approvalStatus StudentApprovalStatus @default(APPROVED) @map("approval_status")
-  isActive       Boolean               @default(true) @map("is_active")
+  approvalStatus     StudentApprovalStatus @default(APPROVED) @map("approval_status")
+  guardianShareToken String?               @unique @map("guardian_share_token")
+  isActive           Boolean               @default(true) @map("is_active")
   createdAt      DateTime              @default(now()) @map("created_at")
 
   tenant             Tenant @relation(fields: [tenantId], references: [id])
@@ -223,6 +224,7 @@ model EvaluationEntry {
   criterionId  String   @map("criterion_id") @db.Uuid
   optionId     String?  @map("option_id") @db.Uuid
   counterValue Int?     @map("counter_value")
+  surahNumber  Int?     @map("surah_number")
   createdBy    String   @map("created_by") @db.Uuid
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
@@ -232,6 +234,7 @@ model EvaluationEntry {
   student   Student             @relation(fields: [tenantId, studentId], references: [tenantId, id])
   criterion EvaluationCriterion @relation(fields: [tenantId, criterionId], references: [tenantId, id])
   option    EvaluationOption?   @relation(fields: [tenantId, optionId], references: [tenantId, id])
+  surah     Surah?              @relation(fields: [surahNumber], references: [number])
   creator   User                @relation(fields: [tenantId, createdBy], references: [tenantId, id])
 
   @@unique([tenantId, sessionId, studentId, criterionId])
@@ -268,7 +271,8 @@ model Surah {
   ayahCount Int    @map("ayah_count")
   juz       Int
 
-  progress StudentSurahProgress[]
+  progress           StudentSurahProgress[]
+  evaluationEntries  EvaluationEntry[]
 
   @@map("surahs")
 }

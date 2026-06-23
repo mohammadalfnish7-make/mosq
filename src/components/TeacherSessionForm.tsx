@@ -1,29 +1,62 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { gradeLabel } from "@/lib/syrian-grades";
 
-type Student = { id: string; fullName: string };
+type CurrentSurah = {
+  number: number;
+  nameAr: string;
+  status: string;
+  statusLabel: string;
+};
+
+type Student = {
+  id: string;
+  fullName: string;
+  currentSurah: CurrentSurah | null;
+};
+
+type SurahOption = { number: number; nameAr: string };
 type Option = { id: string; label: string; value: string };
-type Criterion = { id: string; label: string; inputType: "OPTIONS" | "COUNTER"; options: Option[] };
+type Criterion = {
+  id: string;
+  code: string;
+  label: string;
+  inputType: "OPTIONS" | "COUNTER";
+  options: Option[];
+};
 type AttendanceChoice = { value: "PRESENT" | "ABSENT" | "LATE" | "EXCUSED"; label: string };
 
 type SessionPayload = {
   circle: { id: string; name: string };
   students: Student[];
+  surahs: SurahOption[];
   criteria: Criterion[];
   attendanceChoices: AttendanceChoice[];
   existing: {
     attendance: { studentId: string; status: AttendanceChoice["value"] }[];
-    evaluations: { studentId: string; criterionId: string; optionId: string | null; counterValue: number | null }[];
+    evaluations: {
+      studentId: string;
+      criterionId: string;
+      optionId: string | null;
+      counterValue: number | null;
+      surahNumber: number | null;
+    }[];
   };
 };
 
-type EvaluationDraft = Record<string, Record<string, { optionId?: string; counterValue?: number }>>;
+type EvaluationValue = { optionId?: string; counterValue?: number; surahNumber?: number };
+type EvaluationDraft = Record<string, Record<string, EvaluationValue>>;
 type AttendanceDraft = Record<string, AttendanceChoice["value"]>;
 
 function today() {
   return new Date().toISOString().slice(0, 10);
+}
+
+function surahName(surahs: SurahOption[], number: number | undefined) {
+  if (!number) return null;
+  return surahs.find((surah) => surah.number === number)?.nameAr ?? null;
 }
 
 export function TeacherSessionForm({
@@ -59,7 +92,8 @@ export function TeacherSessionForm({
           evaluationDraft[entry.studentId] ??= {};
           evaluationDraft[entry.studentId][entry.criterionId] = {
             ...(entry.optionId ? { optionId: entry.optionId } : {}),
-            ...(entry.counterValue !== null ? { counterValue: entry.counterValue } : {})
+            ...(entry.counterValue !== null ? { counterValue: entry.counterValue } : {}),
+            ...(entry.surahNumber ? { surahNumber: entry.surahNumber } : {})
           };
         }
 
@@ -84,12 +118,15 @@ export function TeacherSessionForm({
     return { attendanceCount, evaluationCount };
   }, [attendance, evaluations]);
 
-  function setCriterion(studentId: string, criterion: Criterion, value: { optionId?: string; counterValue?: number }) {
+  function setCriterion(studentId: string, criterion: Criterion, value: EvaluationValue) {
     setEvaluations((current) => ({
       ...current,
       [studentId]: {
         ...(current[studentId] ?? {}),
-        [criterion.id]: value
+        [criterion.id]: {
+          ...(current[studentId]?.[criterion.id] ?? {}),
+          ...value
+        }
       }
     }));
   }
@@ -175,9 +212,25 @@ export function TeacherSessionForm({
         <div className="space-y-4 py-4">
           {payload.students.map((student) => (
             <section key={student.id} className="rounded-lg border border-ink/10 bg-white p-3 shadow-sm">
-              <h2 className="text-lg font-bold">{student.fullName}</h2>
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div className="space-y-1">
+                  <Link
+                    href={`/teacher/students/${student.id}`}
+                    className="text-lg font-bold text-teal underline-offset-2 hover:underline"
+                  >
+                    {student.fullName}
+                  </Link>
+                  {student.currentSurah ? (
+                    <p className="text-xs font-bold text-amber-900">
+                      السورة الحالية: {student.currentSurah.nameAr} ({student.currentSurah.statusLabel})
+                    </p>
+                  ) : (
+                    <p className="text-xs text-ink/50">لم تُحدَّد سورة حالية</p>
+                  )}
+                </div>
+              </div>
 
-              <div className="mt-3 grid grid-cols-4 gap-2">
+              <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
                 {payload.attendanceChoices.map((choice) => {
                   const selected = attendance[student.id] === choice.value;
                   return (
@@ -197,9 +250,44 @@ export function TeacherSessionForm({
               <div className="mt-4 space-y-4">
                 {payload.criteria.map((criterion) => {
                   const current = evaluations[student.id]?.[criterion.id];
+                  const isMemorization = criterion.code === "memorization";
+                  const selectedSurahNumber =
+                    current?.surahNumber ?? student.currentSurah?.number;
+                  const selectedSurahLabel = surahName(payload.surahs, selectedSurahNumber);
+
                   return (
                     <div key={criterion.id}>
                       <p className="mb-2 text-sm font-bold text-ink/75">{criterion.label}</p>
+
+                      {isMemorization ? (
+                        <label className="mb-3 grid gap-1">
+                          <span className="text-xs font-semibold text-ink/70">السورة المُقيَّمة</span>
+                          <select
+                            className="tap-target rounded-lg border border-ink/15 bg-white px-3"
+                            value={current?.surahNumber ?? student.currentSurah?.number ?? ""}
+                            onChange={(event) => {
+                              const surahNumber = Number(event.target.value);
+                              setCriterion(student.id, criterion, {
+                                ...(current ?? {}),
+                                surahNumber: Number.isFinite(surahNumber) ? surahNumber : undefined
+                              });
+                            }}
+                          >
+                            <option value="">اختر السورة</option>
+                            {payload.surahs.map((surah) => (
+                              <option key={surah.number} value={surah.number}>
+                                {surah.number}. {surah.nameAr}
+                              </option>
+                            ))}
+                          </select>
+                          {selectedSurahLabel ? (
+                            <p className="text-xs font-semibold text-teal">
+                              التقييم على: {selectedSurahLabel}
+                            </p>
+                          ) : null}
+                        </label>
+                      ) : null}
+
                       {criterion.inputType === "OPTIONS" ? (
                         <div className="grid gap-2 sm:grid-cols-3">
                           {criterion.options.map((option) => {
@@ -210,7 +298,15 @@ export function TeacherSessionForm({
                                 className={`tap-target rounded-lg border px-3 font-bold ${
                                   selected ? "border-teal bg-teal text-white" : "border-ink/10 bg-paper text-ink"
                                 }`}
-                                onClick={() => setCriterion(student.id, criterion, { optionId: option.id })}
+                                onClick={() =>
+                                  setCriterion(student.id, criterion, {
+                                    ...(current ?? {}),
+                                    optionId: option.id,
+                                    ...(isMemorization && !current?.surahNumber && student.currentSurah
+                                      ? { surahNumber: student.currentSurah.number }
+                                      : {})
+                                  })
+                                }
                               >
                                 {option.label}
                               </button>
@@ -223,6 +319,7 @@ export function TeacherSessionForm({
                             className="tap-target rounded-lg bg-clay font-bold text-white"
                             onClick={() =>
                               setCriterion(student.id, criterion, {
+                                ...(current ?? {}),
                                 counterValue: Math.max((current?.counterValue ?? 0) - 1, 0)
                               })
                             }
@@ -237,6 +334,7 @@ export function TeacherSessionForm({
                             className="tap-target rounded-lg bg-teal font-bold text-white"
                             onClick={() =>
                               setCriterion(student.id, criterion, {
+                                ...(current ?? {}),
                                 counterValue: (current?.counterValue ?? 0) + 1
                               })
                             }

@@ -1,6 +1,7 @@
 import { StudentApprovalStatus, SurahStatus, UserRole } from "@prisma/client";
 import { z } from "zod";
 import { AuditAction, writeAuditAsync } from "@/lib/audit";
+import { pickCurrentSurah } from "@/lib/current-surah";
 import { prisma } from "@/lib/prisma";
 import { getAuthContext, assertTeacherCircleAccess } from "@/server/auth";
 import { HttpError } from "@/server/http";
@@ -52,7 +53,13 @@ export async function getStudentMemorizationMap(input: z.infer<typeof memorizati
     prisma.surah.findMany({ orderBy: { number: "asc" } }),
     prisma.studentSurahProgress.findMany({
       where: { tenantId: auth.tenantId, studentId: input.studentId },
-      select: { surahNumber: true, status: true, notes: true, updatedAt: true }
+      select: {
+        surahNumber: true,
+        status: true,
+        notes: true,
+        updatedAt: true,
+        surah: { select: { number: true, nameAr: true } }
+      }
     })
   ]);
 
@@ -80,8 +87,11 @@ export async function getStudentMemorizationMap(input: z.infer<typeof memorizati
     notStarted: items.filter((item) => item.status === SurahStatus.NOT_STARTED).length
   };
 
+  const currentSurah = pickCurrentSurah(progressRows);
+
   return {
     student: { id: student.id, fullName: student.fullName },
+    currentSurah,
     summary,
     items
   };

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { SURAH_STATUS_CYCLE, SURAH_STATUS_LABELS, type SurahStatusValue } from "@/lib/surahs";
@@ -21,6 +22,12 @@ type SurahItem = {
 
 type MemorizationPayload = {
   student: { id: string; fullName: string };
+  currentSurah: {
+    number: number;
+    nameAr: string;
+    status: SurahStatusValue;
+    statusLabel: string;
+  } | null;
   summary: {
     total: number;
     memorized: number;
@@ -130,7 +137,14 @@ function MemorizationPanel({
         <h1 className="text-xl font-bold">خريطة السور</h1>
 
         <label className="mt-3 grid gap-1">
-          <span className="text-sm font-semibold text-ink/80">الطالب</span>
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-sm font-semibold text-ink/80">الطالب</span>
+            {studentId ? (
+              <Link href={`/teacher/students/${studentId}`} className="text-xs font-bold text-teal">
+                ملف الطالب
+              </Link>
+            ) : null}
+          </div>
           <select
             className="tap-target rounded-lg border border-ink/15 bg-white px-3"
             value={studentId}
@@ -145,10 +159,25 @@ function MemorizationPanel({
         </label>
 
         {payload ? (
-          <p className="mt-2 text-xs text-ink/60">
-            محفوظ: {payload.summary.memorized}/{payload.summary.total} · قيد الحفظ:{" "}
-            {payload.summary.inProgress} · مراجعة: {payload.summary.needsRevision}
-          </p>
+          <div className="mt-3 space-y-2">
+            {payload.currentSurah ? (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+                <p className="text-xs font-bold text-amber-900">السورة الحالية</p>
+                <p className="text-base font-bold">
+                  {payload.currentSurah.number}. {payload.currentSurah.nameAr}
+                </p>
+                <p className="text-xs text-amber-800">{payload.currentSurah.statusLabel}</p>
+              </div>
+            ) : (
+              <p className="rounded-lg border border-ink/10 bg-white px-3 py-2 text-sm text-ink/60">
+                لم تُحدَّد سورة حالية — اختر سورة من القائمة واضغط لتغيير حالتها إلى «قيد الحفظ»
+              </p>
+            )}
+            <p className="text-xs text-ink/60">
+              محفوظ: {payload.summary.memorized}/{payload.summary.total} · قيد الحفظ:{" "}
+              {payload.summary.inProgress} · مراجعة: {payload.summary.needsRevision}
+            </p>
+          </div>
         ) : null}
 
         <div className="mt-3 grid gap-2 sm:grid-cols-2">
@@ -205,17 +234,24 @@ function MemorizationPanel({
           {filteredItems.length === 0 ? (
             <p className="text-center text-sm text-ink/60">لا توجد سور مطابقة للفلتر.</p>
           ) : (
-            filteredItems.map((item) => (
+            filteredItems.map((item) => {
+              const isCurrent = payload.currentSurah?.number === item.number;
+              return (
               <button
                 key={item.number}
                 type="button"
                 disabled={savingSurah === item.number}
-                className={`flex w-full items-center justify-between gap-3 rounded-lg border px-3 py-3 text-right transition disabled:opacity-60 ${STATUS_STYLES[item.status]}`}
+                className={`flex w-full items-center justify-between gap-3 rounded-lg border px-3 py-3 text-right transition disabled:opacity-60 ${STATUS_STYLES[item.status]} ${isCurrent ? "ring-2 ring-amber-400" : ""}`}
                 onClick={() => void updateSurahStatus(item.number, nextStatus(item.status))}
               >
                 <div>
                   <p className="font-bold">
                     {item.number}. {item.nameAr}
+                    {isCurrent ? (
+                      <span className="mr-2 rounded bg-amber-200 px-1.5 py-0.5 text-[10px] text-amber-900">
+                        الحالية
+                      </span>
+                    ) : null}
                   </p>
                   <p className="text-xs opacity-70">
                     {item.ayahCount} آية · الجزء {item.juz}
@@ -225,7 +261,8 @@ function MemorizationPanel({
                   {SURAH_STATUS_LABELS[item.status]}
                 </span>
               </button>
-            ))
+            );
+            })
           )}
         </div>
       )}

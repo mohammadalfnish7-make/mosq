@@ -11,20 +11,16 @@ import { isValidGradeCode } from "@/lib/syrian-grades";
 
 const uuid = z.string().uuid();
 
-const gradeCodeSchema = z
+const requiredGradeCodeSchema = z
   .string()
   .trim()
+  .min(1, "الصف الدراسي مطلوب")
   .max(40)
-  .optional()
-  .nullable()
-  .refine((value) => value == null || value === "" || isValidGradeCode(value), {
-    message: "الصف الدراسي غير صالح"
-  })
-  .transform((value) => (value ? value : null));
+  .refine(isValidGradeCode, { message: "الصف الدراسي غير صالح" });
 
 export const circleSchema = z.object({
   name: z.string().trim().min(2).max(80),
-  gradeCode: gradeCodeSchema
+  gradeCode: requiredGradeCodeSchema
 });
 
 export const studentSchema = z.object({
@@ -57,8 +53,8 @@ export const optionSchema = z.object({
 });
 
 export const circleUpdateSchema = z.object({
-  name: z.string().trim().min(2).max(80).optional(),
-  gradeCode: gradeCodeSchema.optional(),
+  name: z.string().trim().min(2).max(80),
+  gradeCode: requiredGradeCodeSchema,
   isActive: z.boolean().optional()
 });
 
@@ -178,7 +174,7 @@ export async function listAdminBootstrap(): Promise<AdminBootstrap> {
 export async function createCircle(input: z.infer<typeof circleSchema>) {
   const auth = await getAuthContext(UserRole.ADMIN);
   const circle = await prisma.circle.create({
-    data: { tenantId: auth.tenantId, name: input.name, gradeCode: input.gradeCode ?? null },
+    data: { tenantId: auth.tenantId, name: input.name, gradeCode: input.gradeCode },
     select: { id: true, name: true, gradeCode: true }
   });
 
@@ -309,8 +305,8 @@ export async function updateCircle(id: string, input: z.infer<typeof circleUpdat
   const circle = await prisma.circle.update({
     where: { tenantId_id: { tenantId: auth.tenantId, id } },
     data: {
-      ...(input.name !== undefined ? { name: input.name } : {}),
-      ...(input.gradeCode !== undefined ? { gradeCode: input.gradeCode } : {}),
+      name: input.name,
+      gradeCode: input.gradeCode,
       ...(input.isActive !== undefined ? { isActive: input.isActive } : {})
     },
     select: { id: true, name: true, gradeCode: true, isActive: true }
