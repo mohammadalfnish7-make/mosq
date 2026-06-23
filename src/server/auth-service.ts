@@ -1,7 +1,9 @@
 import { UserRole } from "@prisma/client";
 import { z } from "zod";
+import { AuditAction, writeAuditAsync } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
 import { hashPassword, verifyPassword } from "@/lib/password";
+import type { RequestMeta } from "@/lib/request-meta";
 import { createSessionToken, sessionCookieOptions, type SessionPayload } from "@/lib/session";
 import { HttpError } from "@/server/http";
 
@@ -17,21 +19,42 @@ export const registerSchema = z.object({
   password: z.string().min(8).max(128)
 });
 
-export async function loginUser(input: z.infer<typeof loginSchema>) {
+export async function loginUser(input: z.infer<typeof loginSchema>, meta?: RequestMeta) {
   const email = input.email.toLowerCase();
   const user = await prisma.user.findUnique({ where: { email } });
 
   if (!user || !user.isActive) {
+    writeAuditAsync({
+      action: AuditAction.AUTH_LOGIN_FAILED,
+      metadata: { email },
+      ...meta
+    });
     throw new HttpError(401, "البريد الإلكتروني أو كلمة المرور غير صحيحة");
   }
 
   const valid = await verifyPassword(input.password, user.passwordHash);
   if (!valid) {
+    writeAuditAsync({
+      tenantId: user.tenantId,
+      actorId: user.id,
+      action: AuditAction.AUTH_LOGIN_FAILED,
+      metadata: { email },
+      ...meta
+    });
     throw new HttpError(401, "البريد الإلكتروني أو كلمة المرور غير صحيحة");
   }
 
   const session = await buildSession(user);
   const token = await createSessionToken(session);
+
+  writeAuditAsync({
+    tenantId: user.tenantId,
+    actorId: user.id,
+    action: AuditAction.AUTH_LOGIN,
+    entityType: "User",
+    entityId: user.id,
+    ...meta
+  });
 
   return {
     user: publicUser(session),
@@ -39,7 +62,7 @@ export async function loginUser(input: z.infer<typeof loginSchema>) {
   };
 }
 
-export async function registerMosque(input: z.infer<typeof registerSchema>) {
+export async function registerMosque(input: z.infer<typeof registerSchema>, meta?: RequestMeta) {
   const email = input.email.toLowerCase();
   const existing = await prisma.user.findUnique({ where: { email } });
   if (existing) {
@@ -66,6 +89,16 @@ export async function registerMosque(input: z.infer<typeof registerSchema>) {
 
   const session = await buildSession(user);
   const token = await createSessionToken(session);
+
+  writeAuditAsync({
+    tenantId: user.tenantId,
+    actorId: user.id,
+    action: AuditAction.AUTH_REGISTER,
+    entityType: "Tenant",
+    entityId: user.tenantId,
+    metadata: { mosqueName: input.mosqueName },
+    ...meta
+  });
 
   return {
     user: publicUser(session),
@@ -96,6 +129,20 @@ export async function getCurrentUser() {
     fullName: user.fullName,
     email: user.email
   };
+}
+
+export async function logoutUser(meta?: RequestMeta) {
+  const user = await getCurrentUser();
+  if (user) {
+    writeAuditAsync({
+      tenantId: user.tenantId,
+      actorId: user.id,
+      action: AuditAction.AUTH_LOGOUT,
+      entityType: "User",
+      entityId: user.id,
+      ...meta
+    });
+  }
 }
 
 function buildSession(user: {

@@ -1,5 +1,7 @@
 import { UserRole } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
+import { AuditAction, postAuditFromEdge } from "@/lib/audit";
+import { getRequestMeta } from "@/lib/request-meta";
 import { SESSION_COOKIE, verifySessionToken } from "@/lib/session";
 
 const PUBLIC_PATHS = ["/", "/login", "/register"];
@@ -30,10 +32,17 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
+  const meta = getRequestMeta(request);
   const token = request.cookies.get(SESSION_COOKIE)?.value;
   const session = token ? await verifySessionToken(token) : null;
 
   if (!session) {
+    postAuditFromEdge(request.url, {
+      action: AuditAction.ACCESS_UNAUTHENTICATED,
+      metadata: { pathname, requiredRole },
+      ...meta
+    });
+
     if (pathname.startsWith("/api/")) {
       return NextResponse.json({ error: "يجب تسجيل الدخول أولاً" }, { status: 401 });
     }
@@ -43,6 +52,14 @@ export async function middleware(request: NextRequest) {
   }
 
   if (session.role !== requiredRole) {
+    postAuditFromEdge(request.url, {
+      tenantId: session.tenantId,
+      actorId: session.userId,
+      action: AuditAction.ACCESS_DENIED,
+      metadata: { pathname, requiredRole, actualRole: session.role },
+      ...meta
+    });
+
     if (pathname.startsWith("/api/")) {
       return NextResponse.json({ error: "ليس لديك صلاحية للوصول" }, { status: 403 });
     }

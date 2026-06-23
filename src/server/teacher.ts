@@ -1,4 +1,5 @@
 import { Prisma, UserRole } from "@prisma/client";
+import { AuditAction, writeAuditAsync } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
 import { getAuthContext, assertTeacherCircleAccess } from "@/server/auth";
 import { HttpError } from "@/server/http";
@@ -227,13 +228,29 @@ export async function bulkSaveTeacherSession(input: BulkSaveInput) {
 
     await Promise.all([...attendanceOps, ...evaluationOps]);
 
-    return {
+    const result = {
       sessionId: session.id,
       saved: {
         attendance: input.attendance.length,
         evaluations: input.evaluations.length
       }
     };
+
+    writeAuditAsync({
+      tenantId: auth.tenantId,
+      actorId: auth.userId,
+      action: AuditAction.SESSION_BULK_SAVE,
+      entityType: "EvaluationSession",
+      entityId: session.id,
+      metadata: {
+        circleId: input.circleId,
+        sessionDate: input.sessionDate,
+        periodCode: input.periodCode,
+        ...result.saved
+      }
+    });
+
+    return result;
   }, {
     isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted
   });

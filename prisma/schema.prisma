@@ -37,6 +37,7 @@ model Tenant {
   sessions           EvaluationSession[]
   attendanceEntries  AttendanceEntry[]
   evaluationEntries  EvaluationEntry[]
+  auditLogs          AuditLog[]
 
   @@map("tenants")
 }
@@ -57,6 +58,7 @@ model User {
   sessions           EvaluationSession[]
   attendanceCreated  AttendanceEntry[]
   evaluationCreated  EvaluationEntry[]
+  auditLogs          AuditLog[]
 
   @@unique([tenantId, id])
   @@index([tenantId, role])
@@ -217,4 +219,25 @@ model EvaluationEntry {
   @@index([tenantId, studentId])
   @@index([tenantId, criterionId])
   @@map("evaluation_entries")
+}
+
+model AuditLog {
+  id         String   @id @default(uuid()) @db.Uuid
+  tenantId   String?  @map("tenant_id") @db.Uuid
+  actorId    String?  @map("actor_id") @db.Uuid
+  action     String
+  entityType String?  @map("entity_type")
+  entityId   String?  @map("entity_id")
+  metadata   Json?
+  ip         String?
+  userAgent  String?  @map("user_agent")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  tenant Tenant? @relation(fields: [tenantId], references: [id])
+  actor  User?   @relation(fields: [tenantId, actorId], references: [tenantId, id])
+
+  @@index([tenantId, createdAt])
+  @@index([actorId, createdAt])
+  @@index([action, createdAt])
+  @@map("audit_logs")
 }

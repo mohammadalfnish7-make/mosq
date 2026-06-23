@@ -1,5 +1,6 @@
 import { InputType, UserRole } from "@prisma/client";
 import { z } from "zod";
+import { AuditAction, writeAuditAsync } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
 import { hashPassword } from "@/lib/password";
 import { getAuthContext } from "@/server/auth";
@@ -82,15 +83,26 @@ export async function listAdminBootstrap() {
 
 export async function createCircle(input: z.infer<typeof circleSchema>) {
   const auth = await getAuthContext(UserRole.ADMIN);
-  return prisma.circle.create({
+  const circle = await prisma.circle.create({
     data: { tenantId: auth.tenantId, name: input.name },
     select: { id: true, name: true }
   });
+
+  writeAuditAsync({
+    tenantId: auth.tenantId,
+    actorId: auth.userId,
+    action: AuditAction.CIRCLE_CREATE,
+    entityType: "Circle",
+    entityId: circle.id,
+    metadata: { name: circle.name }
+  });
+
+  return circle;
 }
 
 export async function createStudent(input: z.infer<typeof studentSchema>) {
   const auth = await getAuthContext(UserRole.ADMIN);
-  return prisma.student.create({
+  const student = await prisma.student.create({
     data: {
       tenantId: auth.tenantId,
       circleId: input.circleId,
@@ -99,6 +111,17 @@ export async function createStudent(input: z.infer<typeof studentSchema>) {
     },
     select: { id: true, fullName: true, circleId: true }
   });
+
+  writeAuditAsync({
+    tenantId: auth.tenantId,
+    actorId: auth.userId,
+    action: AuditAction.STUDENT_CREATE,
+    entityType: "Student",
+    entityId: student.id,
+    metadata: { fullName: student.fullName, circleId: student.circleId }
+  });
+
+  return student;
 }
 
 export async function createTeacher(input: z.infer<typeof teacherSchema>) {
@@ -135,22 +158,53 @@ export async function createTeacher(input: z.infer<typeof teacherSchema>) {
       });
     }
 
+    writeAuditAsync({
+      tenantId: auth.tenantId,
+      actorId: auth.userId,
+      action: AuditAction.TEACHER_CREATE,
+      entityType: "User",
+      entityId: teacher.id,
+      metadata: { email: teacher.email, circleId: input.circleId ?? null }
+    });
+
     return teacher;
   });
 }
 
 export async function createCriterion(input: z.infer<typeof criterionSchema>) {
   const auth = await getAuthContext(UserRole.ADMIN);
-  return prisma.evaluationCriterion.create({
+  const criterion = await prisma.evaluationCriterion.create({
     data: { tenantId: auth.tenantId, ...input },
     select: { id: true, code: true, label: true, inputType: true }
   });
+
+  writeAuditAsync({
+    tenantId: auth.tenantId,
+    actorId: auth.userId,
+    action: AuditAction.CRITERION_CREATE,
+    entityType: "EvaluationCriterion",
+    entityId: criterion.id,
+    metadata: { code: criterion.code, label: criterion.label }
+  });
+
+  return criterion;
 }
 
 export async function createOption(input: z.infer<typeof optionSchema>) {
   const auth = await getAuthContext(UserRole.ADMIN);
-  return prisma.evaluationOption.create({
+  const option = await prisma.evaluationOption.create({
     data: { tenantId: auth.tenantId, ...input },
     select: { id: true, label: true, value: true, criterionId: true }
   });
+
+  writeAuditAsync({
+    tenantId: auth.tenantId,
+    actorId: auth.userId,
+    action: AuditAction.OPTION_CREATE,
+    entityType: "EvaluationOption",
+    entityId: option.id,
+    metadata: { criterionId: option.criterionId, value: option.value }
+  });
+
+  return option;
 }
