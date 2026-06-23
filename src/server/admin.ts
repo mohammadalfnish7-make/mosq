@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { hashPassword } from "@/lib/password";
 import { getAuthContext } from "@/server/auth";
 import { HttpError } from "@/server/http";
+import type { AdminBootstrap } from "@/types/admin-bootstrap";
 
 const uuid = z.string().uuid();
 
@@ -41,7 +42,7 @@ export const optionSchema = z.object({
   displayOrder: z.number().int().min(0).max(999).default(0)
 });
 
-export async function listAdminBootstrap() {
+export async function listAdminBootstrap(): Promise<AdminBootstrap> {
   const auth = await getAuthContext(UserRole.ADMIN);
 
   const [circles, teachers, students, criteria] = await Promise.all([
@@ -78,7 +79,18 @@ export async function listAdminBootstrap() {
     })
   ]);
 
-  return { circles, teachers, students, criteria };
+  return {
+    circles,
+    teachers,
+    students,
+    criteria: criteria.map((criterion) => ({
+      ...criterion,
+      options: criterion.options.map((option) => ({
+        ...option,
+        score: option.score !== null ? Number(option.score) : null
+      }))
+    }))
+  };
 }
 
 export async function createCircle(input: z.infer<typeof circleSchema>) {

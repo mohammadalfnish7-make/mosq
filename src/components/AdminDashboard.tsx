@@ -2,40 +2,9 @@
 
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
+import type { AdminBootstrap } from "@/types/admin-bootstrap";
 
-type Circle = { id: string; name: string; isActive: boolean };
-type Teacher = { id: string; fullName: string };
-type Student = {
-  id: string;
-  fullName: string;
-  guardianPhone: string | null;
-  circleId: string;
-  isActive: boolean;
-};
-type Option = {
-  id: string;
-  label: string;
-  value: string;
-  score: string | null;
-  displayOrder: number;
-  isActive: boolean;
-};
-type Criterion = {
-  id: string;
-  code: string;
-  label: string;
-  inputType: "OPTIONS" | "COUNTER";
-  displayOrder: number;
-  isActive: boolean;
-  options: Option[];
-};
-
-export type AdminBootstrap = {
-  circles: Circle[];
-  teachers: Teacher[];
-  students: Student[];
-  criteria: Criterion[];
-};
+export type { AdminBootstrap };
 
 function FormError({ message }: { message: string }) {
   return <p className="rounded-lg bg-clay/10 px-3 py-2 text-sm font-semibold text-clay">{message}</p>;
@@ -86,7 +55,7 @@ function useAdminForm(onSuccess: () => void) {
   return { error, success, loading, submit, clearMessages: () => { setError(null); setSuccess(null); } };
 }
 
-function CircleSection({ circles, onCreated }: { circles: Circle[]; onCreated: () => void }) {
+function CircleSection({ circles, onCreated }: { circles: AdminBootstrap["circles"]; onCreated: () => void }) {
   const { error, success, loading, submit } = useAdminForm(onCreated);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -133,8 +102,8 @@ function TeacherSection({
   teachers,
   onCreated
 }: {
-  circles: Circle[];
-  teachers: Teacher[];
+  circles: AdminBootstrap["circles"];
+  teachers: AdminBootstrap["teachers"];
   onCreated: () => void;
 }) {
   const { error, success, loading, submit } = useAdminForm(onCreated);
@@ -217,8 +186,8 @@ function StudentSection({
   students,
   onCreated
 }: {
-  circles: Circle[];
-  students: Student[];
+  circles: AdminBootstrap["circles"];
+  students: AdminBootstrap["students"];
   onCreated: () => void;
 }) {
   const { error, success, loading, submit } = useAdminForm(onCreated);
@@ -293,7 +262,7 @@ function CriteriaSection({
   criteria,
   onCreated
 }: {
-  criteria: Criterion[];
+  criteria: AdminBootstrap["criteria"];
   onCreated: () => void;
 }) {
   const criterionForm = useAdminForm(onCreated);
