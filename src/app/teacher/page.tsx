@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { TeacherSessionForm } from "@/components/TeacherSessionForm";
+import { TeacherWorkspace } from "@/components/TeacherWorkspace";
 import { LogoutButton } from "@/components/LogoutButton";
 import { getAuthContext } from "@/server/auth";
 
@@ -10,6 +10,7 @@ export default async function TeacherPage() {
 
   const circle = await prisma.circle.findFirst({
     where: {
+      tenantId: auth.tenantId,
       isActive: true,
       teachers: { some: { teacherId: auth.userId } }
     },
@@ -29,12 +30,18 @@ export default async function TeacherPage() {
     );
   }
 
+  const students = await prisma.student.findMany({
+    where: { tenantId: auth.tenantId, circleId: circle.id, isActive: true },
+    orderBy: { createdAt: "asc" },
+    select: { id: true, fullName: true }
+  });
+
   return (
     <div>
-      <div className="mx-auto flex max-w-xl justify-end px-5 pt-4">
+      <div className="mx-auto flex max-w-3xl justify-end px-5 pt-4">
         <LogoutButton />
       </div>
-      <TeacherSessionForm initialCircle={circle} />
+      <TeacherWorkspace circle={circle} students={students} />
     </div>
   );
 }

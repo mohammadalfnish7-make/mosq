@@ -43,6 +43,8 @@ Seeded dev accounts (password: `password123`):
 ```txt
 GET /api/teacher/session-form?circleId=&date=&periodCode=
 POST /api/teacher/sessions/bulk-save
+GET /api/teacher/memorization?studentId=&circleId=
+PUT /api/teacher/memorization
 POST /api/admin/circles
 POST /api/admin/teachers
 POST /api/admin/students

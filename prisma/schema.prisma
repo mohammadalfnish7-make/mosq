@@ -24,6 +24,13 @@ enum AttendanceStatus {
   EXCUSED
 }
 
+enum SurahStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  MEMORIZED
+  NEEDS_REVISION
+}
+
 model Tenant {
   id        String   @id @default(uuid()) @db.Uuid
   name      String
@@ -38,6 +45,7 @@ model Tenant {
   attendanceEntries  AttendanceEntry[]
   evaluationEntries  EvaluationEntry[]
   auditLogs          AuditLog[]
+  surahProgress      StudentSurahProgress[]
 
   @@map("tenants")
 }
@@ -59,6 +67,7 @@ model User {
   attendanceCreated  AttendanceEntry[]
   evaluationCreated  EvaluationEntry[]
   auditLogs          AuditLog[]
+  surahProgressUpdated StudentSurahProgress[]
 
   @@unique([tenantId, id])
   @@index([tenantId, role])
@@ -109,6 +118,7 @@ model Student {
   circle             Circle @relation(fields: [tenantId, circleId], references: [tenantId, id])
   attendanceEntries  AttendanceEntry[]
   evaluationEntries  EvaluationEntry[]
+  surahProgress      StudentSurahProgress[]
 
   @@unique([tenantId, id])
   @@index([tenantId, circleId, isActive])
@@ -240,4 +250,36 @@ model AuditLog {
   @@index([actorId, createdAt])
   @@index([action, createdAt])
   @@map("audit_logs")
+}
+
+model Surah {
+  number    Int    @id
+  nameAr    String @map("name_ar")
+  nameEn    String @map("name_en")
+  ayahCount Int    @map("ayah_count")
+  juz       Int
+
+  progress StudentSurahProgress[]
+
+  @@map("surahs")
+}
+
+model StudentSurahProgress {
+  tenantId    String      @map("tenant_id") @db.Uuid
+  studentId   String      @map("student_id") @db.Uuid
+  surahNumber Int         @map("surah_number")
+  status      SurahStatus @default(NOT_STARTED)
+  notes       String?
+  updatedBy   String      @map("updated_by") @db.Uuid
+  createdAt   DateTime    @default(now()) @map("created_at")
+  updatedAt   DateTime    @updatedAt @map("updated_at")
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id])
+  student Student @relation(fields: [tenantId, studentId], references: [tenantId, id])
+  surah   Surah   @relation(fields: [surahNumber], references: [number])
+  updater User    @relation(fields: [tenantId, updatedBy], references: [tenantId, id])
+
+  @@id([tenantId, studentId, surahNumber])
+  @@index([tenantId, studentId, status])
+  @@map("student_surah_progress")
 }

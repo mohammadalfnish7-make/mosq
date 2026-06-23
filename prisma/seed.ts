@@ -1,11 +1,14 @@
 import { PrismaClient, InputType, UserRole } from "@prisma/client";
 import bcrypt from "bcryptjs";
+import { seedSurahs } from "./seed-surahs";
 
 const prisma = new PrismaClient();
 
 const DEV_PASSWORD = "password123";
 
 async function main() {
+  await seedSurahs(prisma);
+
   const passwordHash = await bcrypt.hash(DEV_PASSWORD, 12);
 
   const tenant = await prisma.tenant.upsert({

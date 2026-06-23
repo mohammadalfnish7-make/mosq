@@ -17,6 +17,7 @@ export const AuditAction = {
   CRITERION_CREATE: "criterion.create",
   OPTION_CREATE: "option.create",
   SESSION_BULK_SAVE: "session.bulk_save",
+  MEMORIZATION_UPDATE: "memorization.update",
   SERVER_ERROR: "server.error"
 } as const;
 
