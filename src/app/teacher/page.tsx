@@ -1,6 +1,8 @@
 import { prisma } from "@/lib/prisma";
 import { TeacherSessionForm } from "@/components/TeacherSessionForm";
 
+export const dynamic = "force-dynamic";
+
 export default async function TeacherPage() {
   const circle = await prisma.circle.findFirst({
     where: { isActive: true },

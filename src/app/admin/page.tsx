@@ -1,5 +1,7 @@
 import { listAdminBootstrap } from "@/server/admin";
 
+export const dynamic = "force-dynamic";
+
 export default async function AdminPage() {
   const data = await listAdminBootstrap();
 
