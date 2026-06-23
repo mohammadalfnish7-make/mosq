@@ -63,14 +63,17 @@ function MemorizationPanel({
   const [statusFilter, setStatusFilter] = useState<SurahStatusValue | "all">("all");
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<"idle" | "loading" | "saving" | "error">("idle");
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [savingSurah, setSavingSurah] = useState<number | null>(null);
+  const router = useRouter();
 
   const loadMap = useCallback(async () => {
     if (!studentId) return;
     setStatus("loading");
     try {
       const response = await fetch(
-        `/api/teacher/memorization?studentId=${studentId}&circleId=${circleId}`
+        `/api/teacher/memorization?studentId=${studentId}&circleId=${circleId}`,
+        { cache: "no-store" }
       );
       if (!response.ok) throw new Error("load failed");
       const data = (await response.json()) as MemorizationPayload;
@@ -102,10 +105,12 @@ function MemorizationPanel({
 
   async function updateSurahStatus(surahNumber: number, statusValue: SurahStatusValue) {
     setSavingSurah(surahNumber);
+    setSaveError(null);
     try {
       const response = await fetch("/api/teacher/memorization", {
         method: "PUT",
         headers: { "content-type": "application/json" },
+        cache: "no-store",
         body: JSON.stringify({
           studentId,
           circleId,
@@ -115,8 +120,9 @@ function MemorizationPanel({
       if (!response.ok) throw new Error("save failed");
       const data = (await response.json()) as MemorizationPayload;
       setPayload(data);
+      router.refresh();
     } catch {
-      setStatus("error");
+      setSaveError("تعذر حفظ حالة السورة. حاول مرة أخرى.");
     } finally {
       setSavingSurah(null);
     }
@@ -268,6 +274,7 @@ function MemorizationPanel({
       )}
 
       <p className="pb-6 text-center text-xs text-ink/50">اضغط على السورة لتغيير حالتها</p>
+      {saveError ? <p className="pb-4 text-center text-sm font-semibold text-clay">{saveError}</p> : null}
     </main>
   );
 }
@@ -386,8 +393,22 @@ function AddStudentPanel({
   );
 }
 
+const TEACHER_TAB_KEY = "mosq-teacher-tab";
+
 export function TeacherWorkspace({ circle, students, pendingStudents }: TeacherWorkspaceProps) {
   const [tab, setTab] = useState<"session" | "memorization">("session");
+
+  useEffect(() => {
+    const saved = sessionStorage.getItem(TEACHER_TAB_KEY);
+    if (saved === "session" || saved === "memorization") {
+      setTab(saved);
+    }
+  }, []);
+
+  function switchTab(next: "session" | "memorization") {
+    setTab(next);
+    sessionStorage.setItem(TEACHER_TAB_KEY, next);
+  }
 
   return (
     <div>
@@ -399,7 +420,7 @@ export function TeacherWorkspace({ circle, students, pendingStudents }: TeacherW
             className={`flex-1 rounded-lg px-4 py-2 text-sm font-bold ${
               tab === "session" ? "bg-teal text-white" : "bg-white text-ink border border-ink/10"
             }`}
-            onClick={() => setTab("session")}
+            onClick={() => switchTab("session")}
           >
             الحصة اليومية
           </button>
@@ -408,7 +429,7 @@ export function TeacherWorkspace({ circle, students, pendingStudents }: TeacherW
             className={`flex-1 rounded-lg px-4 py-2 text-sm font-bold ${
               tab === "memorization" ? "bg-teal text-white" : "bg-white text-ink border border-ink/10"
             }`}
-            onClick={() => setTab("memorization")}
+            onClick={() => switchTab("memorization")}
           >
             الحفظ
           </button>

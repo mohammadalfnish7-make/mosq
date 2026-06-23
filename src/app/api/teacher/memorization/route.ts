@@ -1,5 +1,7 @@
-import { NextRequest, NextResponse } from "next/server";
-import { jsonError } from "@/server/http";
+import { NextRequest } from "next/server";
+import { jsonData, jsonError } from "@/server/http";
+
+export const dynamic = "force-dynamic";
 import {
   getStudentMemorizationMap,
   memorizationQuerySchema,
@@ -11,7 +13,7 @@ export async function GET(request: NextRequest) {
   try {
     const params = Object.fromEntries(request.nextUrl.searchParams);
     const input = memorizationQuerySchema.parse(params);
-    return NextResponse.json(await getStudentMemorizationMap(input));
+    return jsonData(await getStudentMemorizationMap(input));
   } catch (error) {
     return jsonError(error, { path: "/api/teacher/memorization" });
   }

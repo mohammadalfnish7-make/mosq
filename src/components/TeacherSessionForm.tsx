@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { gradeLabel } from "@/lib/syrian-grades";
 
 type CurrentSurah = {
@@ -51,7 +51,39 @@ type EvaluationDraft = Record<string, Record<string, EvaluationValue>>;
 type AttendanceDraft = Record<string, AttendanceChoice["value"]>;
 
 function today() {
-  return new Date().toISOString().slice(0, 10);
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function applySessionPayload(
+  data: SessionPayload,
+  setters: {
+    setPayload: (payload: SessionPayload) => void;
+    setAttendance: (draft: AttendanceDraft) => void;
+    setEvaluations: (draft: EvaluationDraft) => void;
+  }
+) {
+  const attendanceDraft: AttendanceDraft = {};
+  for (const entry of data.existing.attendance) {
+    attendanceDraft[entry.studentId] = entry.status;
+  }
+
+  const evaluationDraft: EvaluationDraft = {};
+  for (const entry of data.existing.evaluations) {
+    evaluationDraft[entry.studentId] ??= {};
+    evaluationDraft[entry.studentId][entry.criterionId] = {
+      ...(entry.optionId ? { optionId: entry.optionId } : {}),
+      ...(entry.counterValue !== null ? { counterValue: entry.counterValue } : {}),
+      ...(entry.surahNumber ? { surahNumber: entry.surahNumber } : {})
+    };
+  }
+
+  setters.setPayload(data);
+  setters.setAttendance(attendanceDraft);
+  setters.setEvaluations(evaluationDraft);
 }
 
 function surahName(surahs: SurahOption[], number: number | undefined) {
@@ -71,43 +103,32 @@ export function TeacherSessionForm({
   const [evaluations, setEvaluations] = useState<EvaluationDraft>({});
   const [status, setStatus] = useState<"idle" | "loading" | "saving" | "saved" | "error">("idle");
 
+  const loadSessionForm = useCallback(
+    async (options?: { signal?: AbortSignal; finalStatus?: "idle" | "saved" }) => {
+      setStatus("loading");
+      try {
+        const response = await fetch(
+          `/api/teacher/session-form?circleId=${initialCircle.id}&date=${date}&periodCode=${periodCode}`,
+          { cache: "no-store", signal: options?.signal }
+        );
+        if (!response.ok) throw new Error("Failed to load form");
+        const data = (await response.json()) as SessionPayload;
+        applySessionPayload(data, { setPayload, setAttendance, setEvaluations });
+        setStatus(options?.finalStatus ?? "idle");
+      } catch (error) {
+        if (error instanceof Error && error.name !== "AbortError") {
+          setStatus("error");
+        }
+      }
+    },
+    [date, initialCircle.id, periodCode]
+  );
+
   useEffect(() => {
     const controller = new AbortController();
-    setStatus("loading");
-    fetch(`/api/teacher/session-form?circleId=${initialCircle.id}&date=${date}&periodCode=${periodCode}`, {
-      signal: controller.signal
-    })
-      .then((response) => {
-        if (!response.ok) throw new Error("Failed to load form");
-        return response.json() as Promise<SessionPayload>;
-      })
-      .then((data) => {
-        const attendanceDraft: AttendanceDraft = {};
-        for (const entry of data.existing.attendance) {
-          attendanceDraft[entry.studentId] = entry.status;
-        }
-
-        const evaluationDraft: EvaluationDraft = {};
-        for (const entry of data.existing.evaluations) {
-          evaluationDraft[entry.studentId] ??= {};
-          evaluationDraft[entry.studentId][entry.criterionId] = {
-            ...(entry.optionId ? { optionId: entry.optionId } : {}),
-            ...(entry.counterValue !== null ? { counterValue: entry.counterValue } : {}),
-            ...(entry.surahNumber ? { surahNumber: entry.surahNumber } : {})
-          };
-        }
-
-        setPayload(data);
-        setAttendance(attendanceDraft);
-        setEvaluations(evaluationDraft);
-        setStatus("idle");
-      })
-      .catch((error) => {
-        if (error.name !== "AbortError") setStatus("error");
-      });
-
+    void loadSessionForm({ signal: controller.signal });
     return () => controller.abort();
-  }, [date, initialCircle.id, periodCode]);
+  }, [loadSessionForm]);
 
   const counts = useMemo(() => {
     const attendanceCount = Object.keys(attendance).length;
@@ -155,10 +176,17 @@ export function TeacherSessionForm({
     const response = await fetch("/api/teacher/sessions/bulk-save", {
       method: "POST",
       headers: { "content-type": "application/json" },
+      cache: "no-store",
       body: JSON.stringify(body)
     });
 
-    setStatus(response.ok ? "saved" : "error");
+    if (!response.ok) {
+      setStatus("error");
+      return;
+    }
+
+    setStatus("saved");
+    await loadSessionForm({ finalStatus: "saved" });
   }
 
   return (

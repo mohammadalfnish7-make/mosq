@@ -112,9 +112,9 @@ export async function updateStudentMemorization(input: z.infer<typeof memorizati
     throw new HttpError(400, "رقم سورة غير صالح");
   }
 
-  await prisma.$transaction(
-    input.items.map((item) =>
-      prisma.studentSurahProgress.upsert({
+  await prisma.$transaction(async (tx) => {
+    for (const item of input.items) {
+      await tx.studentSurahProgress.upsert({
         where: {
           tenantId_studentId_surahNumber: {
             tenantId: auth.tenantId,
@@ -135,9 +135,9 @@ export async function updateStudentMemorization(input: z.infer<typeof memorizati
           notes: item.notes ?? null,
           updatedBy: auth.userId
         }
-      })
-    )
-  );
+      });
+    }
+  });
 
   writeAuditAsync({
     tenantId: auth.tenantId,
