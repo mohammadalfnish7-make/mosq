@@ -3,6 +3,9 @@
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { AdminBootstrap } from "@/types/admin-bootstrap";
+import { SYRIAN_GRADES, SYRIAN_GRADE_STAGE_LABELS, gradeLabel } from "@/lib/syrian-grades";
+import { STUDENT_APPROVAL_LABELS } from "@/lib/student-approval";
+import type { StudentApprovalStatus } from "@prisma/client";
 
 export type { AdminBootstrap };
 
@@ -69,6 +72,41 @@ function ActiveBadge({ isActive }: { isActive: boolean }) {
   );
 }
 
+function ApprovalBadge({ status }: { status: StudentApprovalStatus }) {
+  const pending = status === "PENDING";
+  return (
+    <span
+      className={`rounded-md px-2 py-0.5 text-xs font-bold ${
+        pending ? "bg-amber-100 text-amber-900" : "bg-mint text-ink"
+      }`}
+    >
+      {STUDENT_APPROVAL_LABELS[status]}
+    </span>
+  );
+}
+
+function GradeSelect({ name, defaultValue = "" }: { name: string; defaultValue?: string }) {
+  const stages = ["kindergarten", "basic", "secondary"] as const;
+
+  return (
+    <label className="grid gap-1">
+      <span className={labelClass}>الصف الدراسي (سوريا)</span>
+      <select className={fieldClass} name={name} defaultValue={defaultValue}>
+        <option value="">بدون تحديد</option>
+        {stages.map((stage) => (
+          <optgroup key={stage} label={SYRIAN_GRADE_STAGE_LABELS[stage]}>
+            {SYRIAN_GRADES.filter((grade) => grade.stage === stage).map((grade) => (
+              <option key={grade.code} value={grade.code}>
+                {grade.label}
+              </option>
+            ))}
+          </optgroup>
+        ))}
+      </select>
+    </label>
+  );
+}
+
 function CircleSection({ circles, onSaved }: { circles: AdminBootstrap["circles"]; onSaved: () => void }) {
   const form = useAdminForm(onSaved);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -78,8 +116,9 @@ function CircleSection({ circles, onSaved }: { circles: AdminBootstrap["circles"
     const htmlForm = event.currentTarget;
     const data = new FormData(htmlForm);
     const name = String(data.get("name") ?? "").trim();
+    const gradeCode = String(data.get("gradeCode") ?? "").trim() || null;
     await form.submit(async () => {
-      await requestJson("POST", "/api/admin/circles", { name });
+      await requestJson("POST", "/api/admin/circles", { name, gradeCode });
       htmlForm.reset();
       setEditingId(null);
     }, "تمت إضافة الحلقة بنجاح");
@@ -89,9 +128,10 @@ function CircleSection({ circles, onSaved }: { circles: AdminBootstrap["circles"
     event.preventDefault();
     const data = new FormData(event.currentTarget);
     const name = String(data.get("name") ?? "").trim();
+    const gradeCode = String(data.get("gradeCode") ?? "").trim() || null;
     const isActive = data.get("isActive") === "on";
     await form.submit(async () => {
-      await requestJson("PATCH", `/api/admin/circles/${id}`, { name, isActive });
+      await requestJson("PATCH", `/api/admin/circles/${id}`, { name, gradeCode, isActive });
       setEditingId(null);
     }, "تم تحديث الحلقة");
   }
@@ -102,8 +142,9 @@ function CircleSection({ circles, onSaved }: { circles: AdminBootstrap["circles"
       <form className="mt-3 grid gap-2" onSubmit={handleCreate}>
         <label className="grid gap-1">
           <span className={labelClass}>اسم الحلقة</span>
-          <input className={fieldClass} name="name" required minLength={2} maxLength={80} placeholder="حلقة الفجر" />
+          <input className={fieldClass} name="name" required minLength={2} maxLength={80} placeholder="حلقة الإيمان" />
         </label>
+        <GradeSelect name="gradeCode" />
         {form.error ? <FormError message={form.error} /> : null}
         {form.success ? <FormSuccess message={form.success} /> : null}
         <button className={buttonClass} type="submit" disabled={form.loading}>
@@ -116,6 +157,7 @@ function CircleSection({ circles, onSaved }: { circles: AdminBootstrap["circles"
             {editingId === circle.id ? (
               <form className="grid gap-2" onSubmit={(event) => void handleUpdate(event, circle.id)}>
                 <input className={fieldClass} name="name" defaultValue={circle.name} required minLength={2} maxLength={80} />
+                <GradeSelect name="gradeCode" defaultValue={circle.gradeCode ?? ""} />
                 <label className="flex items-center gap-2 text-sm font-semibold">
                   <input type="checkbox" name="isActive" defaultChecked={circle.isActive} />
                   نشط
@@ -127,8 +169,13 @@ function CircleSection({ circles, onSaved }: { circles: AdminBootstrap["circles"
               </form>
             ) : (
               <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <span className="font-semibold">{circle.name}</span>
+                  {circle.gradeCode ? (
+                    <span className="rounded-md bg-white px-2 py-0.5 text-xs font-bold text-teal">
+                      {gradeLabel(circle.gradeCode)}
+                    </span>
+                  ) : null}
                   <ActiveBadge isActive={circle.isActive} />
                 </div>
                 <button className={ghostButtonClass} type="button" onClick={() => setEditingId(circle.id)}>تعديل</button>
@@ -237,7 +284,10 @@ function TeacherSection({
                   <div>
                     <p className="font-semibold">{teacher.fullName}</p>
                     <p className="text-xs text-ink/60">{teacher.email}</p>
-                    <p className="text-xs text-ink/60">{circle?.name ?? "بدون حلقة"}</p>
+                    <p className="text-xs text-ink/60">
+                      {circle?.name ?? "بدون حلقة"}
+                      {circle?.gradeCode ? ` · ${gradeLabel(circle.gradeCode)}` : ""}
+                    </p>
                   </div>
                   <div className="flex flex-col items-end gap-2">
                     <ActiveBadge isActive={teacher.isActive} />
@@ -294,6 +344,19 @@ function StudentSection({
     }, "تم تحديث الطالب");
   }
 
+  async function handleApprove(id: string) {
+    const student = students.find((item) => item.id === id);
+    if (!student) return;
+    await form.submit(async () => {
+      await requestJson("PATCH", `/api/admin/students/${id}`, {
+        fullName: student.fullName,
+        circleId: student.circleId,
+        guardianPhone: student.guardianPhone ?? undefined,
+        approvalStatus: "APPROVED"
+      });
+    }, "تم اعتماد الطالب");
+  }
+
   return (
     <section className="rounded-lg border border-ink/10 bg-white p-4">
       <h2 className="text-lg font-bold">الطلاب</h2>
@@ -335,11 +398,27 @@ function StudentSection({
                 <div className="flex items-start justify-between gap-2">
                   <div>
                     <p className="font-semibold">{student.fullName}</p>
-                    <p className="text-xs text-ink/60">{circle?.name ?? "حلقة غير معروفة"}</p>
+                    <p className="text-xs text-ink/60">
+                      {circle?.name ?? "حلقة غير معروفة"}
+                      {circle?.gradeCode ? ` · ${gradeLabel(circle.gradeCode)}` : ""}
+                    </p>
                     {student.guardianPhone ? <p className="text-xs text-ink/60">{student.guardianPhone}</p> : null}
                   </div>
                   <div className="flex flex-col items-end gap-2">
-                    <ActiveBadge isActive={student.isActive} />
+                    <div className="flex flex-wrap justify-end gap-1">
+                      <ApprovalBadge status={student.approvalStatus} />
+                      <ActiveBadge isActive={student.isActive} />
+                    </div>
+                    {student.approvalStatus === "PENDING" ? (
+                      <button
+                        className="rounded-lg bg-teal px-3 py-1 text-xs font-bold text-white"
+                        type="button"
+                        disabled={form.loading}
+                        onClick={() => void handleApprove(student.id)}
+                      >
+                        اعتماد
+                      </button>
+                    ) : null}
                     <button className={ghostButtonClass} type="button" onClick={() => setEditingId(student.id)}>تعديل</button>
                   </div>
                 </div>
@@ -521,10 +600,17 @@ export function AdminDashboard({ data }: { data: AdminBootstrap }) {
     router.refresh();
   }
 
+  const pendingStudentCount = data.students.filter((student) => student.approvalStatus === "PENDING").length;
+
   const tabs = [
     { id: "circles" as const, label: "الحلقات", count: data.circles.length },
     { id: "teachers" as const, label: "المعلمون", count: data.teachers.length },
-    { id: "students" as const, label: "الطلاب", count: data.students.length },
+    {
+      id: "students" as const,
+      label: "الطلاب",
+      count: data.students.length,
+      badge: pendingStudentCount > 0 ? pendingStudentCount : undefined
+    },
     { id: "criteria" as const, label: "المعايير", count: data.criteria.length }
   ];
 
@@ -543,6 +629,11 @@ export function AdminDashboard({ data }: { data: AdminBootstrap }) {
             >
               {item.label}
               <span className="mr-1 text-xs opacity-80">({item.count})</span>
+              {"badge" in item && item.badge ? (
+                <span className="mr-1 rounded-full bg-amber-400 px-1.5 py-0.5 text-[10px] font-bold text-ink">
+                  {item.badge} معلّق
+                </span>
+              ) : null}
             </button>
           ))}
         </div>

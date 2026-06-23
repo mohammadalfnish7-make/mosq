@@ -31,6 +31,11 @@ enum SurahStatus {
   NEEDS_REVISION
 }
 
+enum StudentApprovalStatus {
+  PENDING
+  APPROVED
+}
+
 model Tenant {
   id        String   @id @default(uuid()) @db.Uuid
   name      String
@@ -78,6 +83,7 @@ model Circle {
   id        String   @id @default(uuid()) @db.Uuid
   tenantId  String   @map("tenant_id") @db.Uuid
   name      String
+  gradeCode String?  @map("grade_code")
   isActive  Boolean  @default(true) @map("is_active")
   createdAt DateTime @default(now()) @map("created_at")
 
@@ -88,6 +94,7 @@ model Circle {
 
   @@unique([tenantId, id])
   @@index([tenantId, isActive])
+  @@index([tenantId, gradeCode])
   @@map("circles")
 }
 
@@ -106,13 +113,14 @@ model CircleTeacher {
 }
 
 model Student {
-  id            String   @id @default(uuid()) @db.Uuid
-  tenantId      String   @map("tenant_id") @db.Uuid
-  circleId      String   @map("circle_id") @db.Uuid
-  fullName      String   @map("full_name")
-  guardianPhone String?  @map("guardian_phone")
-  isActive      Boolean  @default(true) @map("is_active")
-  createdAt     DateTime @default(now()) @map("created_at")
+  id             String                @id @default(uuid()) @db.Uuid
+  tenantId       String                @map("tenant_id") @db.Uuid
+  circleId       String                @map("circle_id") @db.Uuid
+  fullName       String                @map("full_name")
+  guardianPhone  String?               @map("guardian_phone")
+  approvalStatus StudentApprovalStatus @default(APPROVED) @map("approval_status")
+  isActive       Boolean               @default(true) @map("is_active")
+  createdAt      DateTime              @default(now()) @map("created_at")
 
   tenant             Tenant @relation(fields: [tenantId], references: [id])
   circle             Circle @relation(fields: [tenantId, circleId], references: [tenantId, id])
@@ -122,6 +130,7 @@ model Student {
 
   @@unique([tenantId, id])
   @@index([tenantId, circleId, isActive])
+  @@index([tenantId, approvalStatus])
   @@map("students")
 }
 

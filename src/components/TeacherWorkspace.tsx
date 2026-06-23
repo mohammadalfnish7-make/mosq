@@ -1,10 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { SURAH_STATUS_CYCLE, SURAH_STATUS_LABELS, type SurahStatusValue } from "@/lib/surahs";
 import { TeacherSessionForm } from "./TeacherSessionForm";
 
 type Student = { id: string; fullName: string };
+type PendingStudent = { id: string; fullName: string; guardianPhone: string | null; createdAt: Date | string };
 
 type SurahItem = {
   number: number;
@@ -234,15 +236,125 @@ function MemorizationPanel({
 }
 
 type TeacherWorkspaceProps = {
-  circle: { id: string; name: string };
+  circle: { id: string; name: string; gradeCode?: string | null };
   students: Student[];
+  pendingStudents: PendingStudent[];
 };
 
-export function TeacherWorkspace({ circle, students }: TeacherWorkspaceProps) {
+function AddStudentPanel({
+  circleId,
+  pendingStudents
+}: {
+  circleId: string;
+  pendingStudents: PendingStudent[];
+}) {
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const htmlForm = event.currentTarget;
+    const data = new FormData(htmlForm);
+    setError(null);
+    setSuccess(null);
+    setLoading(true);
+    try {
+      const response = await fetch("/api/teacher/students", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          circleId,
+          fullName: String(data.get("fullName") ?? "").trim(),
+          ...(String(data.get("guardianPhone") ?? "").trim()
+            ? { guardianPhone: String(data.get("guardianPhone")).trim() }
+            : {})
+        })
+      });
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload.error ?? "تعذر إضافة الطالب");
+      }
+      htmlForm.reset();
+      setOpen(false);
+      setSuccess("تم إرسال الطالب للمشرف للاعتماد");
+      router.refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "حدث خطأ غير متوقع");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="border-b border-ink/10 bg-amber-50/50">
+      <div className="mx-auto max-w-3xl px-3 py-3 sm:px-5">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-sm font-semibold text-ink/80">إضافة طالب جديد</p>
+          <button
+            type="button"
+            className="rounded-lg bg-teal px-3 py-1.5 text-xs font-bold text-white"
+            onClick={() => setOpen((value) => !value)}
+          >
+            {open ? "إلغاء" : "إضافة طالب"}
+          </button>
+        </div>
+
+        {open ? (
+          <form className="mt-3 grid gap-2" onSubmit={(event) => void handleSubmit(event)}>
+            <input
+              className="tap-target rounded-lg border border-ink/15 bg-white px-3"
+              name="fullName"
+              placeholder="الاسم الكامل"
+              required
+              minLength={2}
+              maxLength={120}
+            />
+            <input
+              className="tap-target rounded-lg border border-ink/15 bg-white px-3"
+              name="guardianPhone"
+              placeholder="هاتف ولي الأمر (اختياري)"
+              maxLength={30}
+            />
+            {error ? <p className="text-sm font-semibold text-clay">{error}</p> : null}
+            <button
+              type="submit"
+              className="tap-target rounded-lg bg-teal px-4 py-2 text-sm font-bold text-white disabled:opacity-60"
+              disabled={loading}
+            >
+              {loading ? "جار الإرسال..." : "إرسال للاعتماد"}
+            </button>
+          </form>
+        ) : null}
+
+        {success ? <p className="mt-2 text-sm font-semibold text-teal">{success}</p> : null}
+
+        {pendingStudents.length > 0 ? (
+          <div className="mt-3 rounded-lg border border-amber-200 bg-white p-3">
+            <p className="text-xs font-bold text-amber-900">بانتظار اعتماد المشرف ({pendingStudents.length})</p>
+            <ul className="mt-2 space-y-1">
+              {pendingStudents.map((student) => (
+                <li key={student.id} className="text-sm text-ink/80">
+                  {student.fullName}
+                  {student.guardianPhone ? ` · ${student.guardianPhone}` : ""}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+export function TeacherWorkspace({ circle, students, pendingStudents }: TeacherWorkspaceProps) {
   const [tab, setTab] = useState<"session" | "memorization">("session");
 
   return (
     <div>
+      <AddStudentPanel circleId={circle.id} pendingStudents={pendingStudents} />
       <div className="sticky top-0 z-20 border-b border-ink/10 bg-paper/95 backdrop-blur">
         <div className="mx-auto flex max-w-3xl gap-2 px-3 py-3 sm:px-5">
           <button

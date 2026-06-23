@@ -56,11 +56,12 @@ async function main() {
 
   const circle = await prisma.circle.upsert({
     where: { id: "00000000-0000-0000-0000-000000000020" },
-    update: {},
+    update: { gradeCode: "g6" },
     create: {
       id: "00000000-0000-0000-0000-000000000020",
       tenantId: tenant.id,
-      name: "حلقة الفجر"
+      name: "حلقة الفجر",
+      gradeCode: "g6"
     }
   });
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { gradeLabel } from "@/lib/syrian-grades";
 
 type Student = { id: string; fullName: string };
 type Option = { id: string; label: string; value: string };
@@ -25,7 +26,11 @@ function today() {
   return new Date().toISOString().slice(0, 10);
 }
 
-export function TeacherSessionForm({ initialCircle }: { initialCircle: { id: string; name: string } }) {
+export function TeacherSessionForm({
+  initialCircle
+}: {
+  initialCircle: { id: string; name: string; gradeCode?: string | null };
+}) {
   const [date, setDate] = useState(today());
   const [periodCode, setPeriodCode] = useState("default");
   const [payload, setPayload] = useState<SessionPayload | null>(null);
@@ -126,6 +131,9 @@ export function TeacherSessionForm({ initialCircle }: { initialCircle: { id: str
           <div>
             <p className="text-xs font-bold text-teal">واجهة المعلم</p>
             <h1 className="text-xl font-bold">{initialCircle.name}</h1>
+            {initialCircle.gradeCode ? (
+              <p className="text-sm font-semibold text-ink/70">{gradeLabel(initialCircle.gradeCode)}</p>
+            ) : null}
           </div>
           <button
             className="tap-target rounded-lg bg-teal px-5 font-bold text-white disabled:opacity-60"

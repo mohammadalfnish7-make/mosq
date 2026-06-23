@@ -1,4 +1,4 @@
-import { InputType, UserRole } from "@prisma/client";
+import { InputType, StudentApprovalStatus, UserRole } from "@prisma/client";
 import { z } from "zod";
 import { AuditAction, writeAuditAsync } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
@@ -7,10 +7,24 @@ import { getAuthContext } from "@/server/auth";
 import { HttpError } from "@/server/http";
 import type { AdminBootstrap } from "@/types/admin-bootstrap";
 
+import { isValidGradeCode } from "@/lib/syrian-grades";
+
 const uuid = z.string().uuid();
 
+const gradeCodeSchema = z
+  .string()
+  .trim()
+  .max(40)
+  .optional()
+  .nullable()
+  .refine((value) => value == null || value === "" || isValidGradeCode(value), {
+    message: "الصف الدراسي غير صالح"
+  })
+  .transform((value) => (value ? value : null));
+
 export const circleSchema = z.object({
-  name: z.string().trim().min(2).max(80)
+  name: z.string().trim().min(2).max(80),
+  gradeCode: gradeCodeSchema
 });
 
 export const studentSchema = z.object({
@@ -44,11 +58,13 @@ export const optionSchema = z.object({
 
 export const circleUpdateSchema = z.object({
   name: z.string().trim().min(2).max(80).optional(),
+  gradeCode: gradeCodeSchema.optional(),
   isActive: z.boolean().optional()
 });
 
 export const studentUpdateSchema = studentSchema.extend({
-  isActive: z.boolean().optional()
+  isActive: z.boolean().optional(),
+  approvalStatus: z.nativeEnum(StudentApprovalStatus).optional()
 });
 
 export const teacherUpdateSchema = z.object({
@@ -90,7 +106,7 @@ export async function listAdminBootstrap(): Promise<AdminBootstrap> {
     prisma.circle.findMany({
       where: { tenantId: auth.tenantId },
       orderBy: { createdAt: "asc" },
-      select: { id: true, name: true, isActive: true }
+      select: { id: true, name: true, gradeCode: true, isActive: true }
     }),
     prisma.user.findMany({
       where: { tenantId: auth.tenantId, role: UserRole.TEACHER },
@@ -110,8 +126,15 @@ export async function listAdminBootstrap(): Promise<AdminBootstrap> {
     }),
     prisma.student.findMany({
       where: { tenantId: auth.tenantId },
-      orderBy: { createdAt: "asc" },
-      select: { id: true, fullName: true, guardianPhone: true, circleId: true, isActive: true }
+      orderBy: [{ approvalStatus: "asc" }, { createdAt: "asc" }],
+      select: {
+        id: true,
+        fullName: true,
+        guardianPhone: true,
+        circleId: true,
+        approvalStatus: true,
+        isActive: true
+      }
     }),
     prisma.evaluationCriterion.findMany({
       where: { tenantId: auth.tenantId },
@@ -155,8 +178,8 @@ export async function listAdminBootstrap(): Promise<AdminBootstrap> {
 export async function createCircle(input: z.infer<typeof circleSchema>) {
   const auth = await getAuthContext(UserRole.ADMIN);
   const circle = await prisma.circle.create({
-    data: { tenantId: auth.tenantId, name: input.name },
-    select: { id: true, name: true }
+    data: { tenantId: auth.tenantId, name: input.name, gradeCode: input.gradeCode ?? null },
+    select: { id: true, name: true, gradeCode: true }
   });
 
   writeAuditAsync({
@@ -165,7 +188,7 @@ export async function createCircle(input: z.infer<typeof circleSchema>) {
     action: AuditAction.CIRCLE_CREATE,
     entityType: "Circle",
     entityId: circle.id,
-    metadata: { name: circle.name }
+    metadata: { name: circle.name, gradeCode: circle.gradeCode }
   });
 
   return circle;
@@ -178,9 +201,10 @@ export async function createStudent(input: z.infer<typeof studentSchema>) {
       tenantId: auth.tenantId,
       circleId: input.circleId,
       fullName: input.fullName,
-      guardianPhone: input.guardianPhone
+      guardianPhone: input.guardianPhone,
+      approvalStatus: StudentApprovalStatus.APPROVED
     },
-    select: { id: true, fullName: true, circleId: true }
+    select: { id: true, fullName: true, circleId: true, approvalStatus: true }
   });
 
   writeAuditAsync({
@@ -286,9 +310,10 @@ export async function updateCircle(id: string, input: z.infer<typeof circleUpdat
     where: { tenantId_id: { tenantId: auth.tenantId, id } },
     data: {
       ...(input.name !== undefined ? { name: input.name } : {}),
+      ...(input.gradeCode !== undefined ? { gradeCode: input.gradeCode } : {}),
       ...(input.isActive !== undefined ? { isActive: input.isActive } : {})
     },
-    select: { id: true, name: true, isActive: true }
+    select: { id: true, name: true, gradeCode: true, isActive: true }
   });
 
   writeAuditAsync({
@@ -297,7 +322,7 @@ export async function updateCircle(id: string, input: z.infer<typeof circleUpdat
     action: AuditAction.CIRCLE_UPDATE,
     entityType: "Circle",
     entityId: circle.id,
-    metadata: { name: circle.name, isActive: circle.isActive }
+    metadata: { name: circle.name, gradeCode: circle.gradeCode, isActive: circle.isActive }
   });
 
   return circle;
@@ -307,24 +332,50 @@ export async function updateStudent(id: string, input: z.infer<typeof studentUpd
   const auth = await getAuthContext(UserRole.ADMIN);
   await assertTenantCircle(auth.tenantId, input.circleId);
 
+  const existing = await prisma.student.findFirst({
+    where: { tenantId: auth.tenantId, id },
+    select: { approvalStatus: true }
+  });
+  if (!existing) {
+    throw new HttpError(404, "الطالب غير موجود");
+  }
+
   const student = await prisma.student.update({
     where: { tenantId_id: { tenantId: auth.tenantId, id } },
     data: {
       fullName: input.fullName,
       circleId: input.circleId,
       guardianPhone: input.guardianPhone ?? null,
-      ...(input.isActive !== undefined ? { isActive: input.isActive } : {})
+      ...(input.isActive !== undefined ? { isActive: input.isActive } : {}),
+      ...(input.approvalStatus !== undefined ? { approvalStatus: input.approvalStatus } : {})
     },
-    select: { id: true, fullName: true, circleId: true, isActive: true }
+    select: {
+      id: true,
+      fullName: true,
+      circleId: true,
+      approvalStatus: true,
+      isActive: true
+    }
   });
+
+  const action =
+    existing.approvalStatus === StudentApprovalStatus.PENDING &&
+    student.approvalStatus === StudentApprovalStatus.APPROVED
+      ? AuditAction.STUDENT_APPROVE
+      : AuditAction.STUDENT_UPDATE;
 
   writeAuditAsync({
     tenantId: auth.tenantId,
     actorId: auth.userId,
-    action: AuditAction.STUDENT_UPDATE,
+    action,
     entityType: "Student",
     entityId: student.id,
-    metadata: { fullName: student.fullName, circleId: student.circleId, isActive: student.isActive }
+    metadata: {
+      fullName: student.fullName,
+      circleId: student.circleId,
+      approvalStatus: student.approvalStatus,
+      isActive: student.isActive
+    }
   });
 
   return student;

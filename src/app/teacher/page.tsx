@@ -1,3 +1,4 @@
+import { StudentApprovalStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { TeacherWorkspace } from "@/components/TeacherWorkspace";
 import { LogoutButton } from "@/components/LogoutButton";
@@ -15,7 +16,7 @@ export default async function TeacherPage() {
       teachers: { some: { teacherId: auth.userId } }
     },
     orderBy: { createdAt: "asc" },
-    select: { id: true, name: true }
+    select: { id: true, name: true, gradeCode: true }
   });
 
   if (!circle) {
@@ -31,9 +32,25 @@ export default async function TeacherPage() {
   }
 
   const students = await prisma.student.findMany({
-    where: { tenantId: auth.tenantId, circleId: circle.id, isActive: true },
+    where: {
+      tenantId: auth.tenantId,
+      circleId: circle.id,
+      isActive: true,
+      approvalStatus: StudentApprovalStatus.APPROVED
+    },
     orderBy: { createdAt: "asc" },
     select: { id: true, fullName: true }
+  });
+
+  const pendingStudents = await prisma.student.findMany({
+    where: {
+      tenantId: auth.tenantId,
+      circleId: circle.id,
+      isActive: true,
+      approvalStatus: StudentApprovalStatus.PENDING
+    },
+    orderBy: { createdAt: "asc" },
+    select: { id: true, fullName: true, guardianPhone: true, createdAt: true }
   });
 
   return (
@@ -41,7 +58,7 @@ export default async function TeacherPage() {
       <div className="mx-auto flex max-w-3xl justify-end px-5 pt-4">
         <LogoutButton />
       </div>
-      <TeacherWorkspace circle={circle} students={students} />
+      <TeacherWorkspace circle={circle} students={students} pendingStudents={pendingStudents} />
     </div>
   );
 }

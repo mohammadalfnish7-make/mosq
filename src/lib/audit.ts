@@ -15,6 +15,7 @@ export const AuditAction = {
   CIRCLE_UPDATE: "circle.update",
   STUDENT_CREATE: "student.create",
   STUDENT_UPDATE: "student.update",
+  STUDENT_APPROVE: "student.approve",
   TEACHER_CREATE: "teacher.create",
   TEACHER_UPDATE: "teacher.update",
   CRITERION_CREATE: "criterion.create",

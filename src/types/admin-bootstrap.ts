@@ -1,7 +1,7 @@
-import type { InputType } from "@prisma/client";
+import { InputType, StudentApprovalStatus, UserRole } from "@prisma/client";
 
 export type AdminBootstrap = {
-  circles: { id: string; name: string; isActive: boolean }[];
+  circles: { id: string; name: string; gradeCode: string | null; isActive: boolean }[];
   teachers: {
     id: string;
     fullName: string;
@@ -15,6 +15,7 @@ export type AdminBootstrap = {
     fullName: string;
     guardianPhone: string | null;
     circleId: string;
+    approvalStatus: StudentApprovalStatus;
     isActive: boolean;
   }[];
   criteria: {

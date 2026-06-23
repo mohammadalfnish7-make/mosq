@@ -1,4 +1,4 @@
-import { SurahStatus, UserRole } from "@prisma/client";
+import { StudentApprovalStatus, SurahStatus, UserRole } from "@prisma/client";
 import { z } from "zod";
 import { AuditAction, writeAuditAsync } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
@@ -26,7 +26,13 @@ export const memorizationUpdateSchema = z.object({
 
 async function assertStudentInCircle(tenantId: string, circleId: string, studentId: string) {
   const student = await prisma.student.findFirst({
-    where: { tenantId, id: studentId, circleId, isActive: true },
+    where: {
+      tenantId,
+      id: studentId,
+      circleId,
+      isActive: true,
+      approvalStatus: StudentApprovalStatus.APPROVED
+    },
     select: { id: true, fullName: true, circleId: true }
   });
 
@@ -147,7 +153,12 @@ export async function listCircleStudentsForTeacher(circleId: string) {
   await assertTeacherCircleAccess(auth.tenantId, auth.userId, circleId);
 
   return prisma.student.findMany({
-    where: { tenantId: auth.tenantId, circleId, isActive: true },
+    where: {
+      tenantId: auth.tenantId,
+      circleId,
+      isActive: true,
+      approvalStatus: StudentApprovalStatus.APPROVED
+    },
     orderBy: { createdAt: "asc" },
     select: { id: true, fullName: true }
   });

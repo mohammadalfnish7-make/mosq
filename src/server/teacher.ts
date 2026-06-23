@@ -1,9 +1,18 @@
-import { Prisma, UserRole } from "@prisma/client";
+import { Prisma, StudentApprovalStatus, UserRole } from "@prisma/client";
+import { z } from "zod";
 import { AuditAction, writeAuditAsync } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
 import { getAuthContext, assertTeacherCircleAccess } from "@/server/auth";
 import { HttpError } from "@/server/http";
 import { BulkSaveInput, validateCriterionValue } from "@/server/validation";
+
+const uuid = z.string().uuid();
+
+export const teacherStudentSchema = z.object({
+  circleId: uuid,
+  fullName: z.string().trim().min(2).max(120),
+  guardianPhone: z.string().trim().max(30).optional()
+});
 
 export const attendanceChoices = [
   { value: "PRESENT", label: "حاضر" },
@@ -26,7 +35,12 @@ export async function getTeacherSessionForm(input: {
       select: { id: true, name: true }
     }),
     prisma.student.findMany({
-      where: { tenantId: auth.tenantId, circleId: input.circleId, isActive: true },
+      where: {
+        tenantId: auth.tenantId,
+        circleId: input.circleId,
+        isActive: true,
+        approvalStatus: StudentApprovalStatus.APPROVED
+      },
       orderBy: { createdAt: "asc" },
       select: { id: true, fullName: true }
     }),
@@ -110,7 +124,8 @@ export async function bulkSaveTeacherSession(input: BulkSaveInput) {
         tenantId: auth.tenantId,
         circleId: input.circleId,
         id: { in: [...studentIds] },
-        isActive: true
+        isActive: true,
+        approvalStatus: StudentApprovalStatus.APPROVED
       },
       select: { id: true }
     }),
@@ -254,4 +269,36 @@ export async function bulkSaveTeacherSession(input: BulkSaveInput) {
   }, {
     isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted
   });
+}
+
+export async function createTeacherStudent(input: z.infer<typeof teacherStudentSchema>) {
+  const auth = await getAuthContext(UserRole.TEACHER);
+  await assertTeacherCircleAccess(auth.tenantId, auth.userId, input.circleId);
+
+  const student = await prisma.student.create({
+    data: {
+      tenantId: auth.tenantId,
+      circleId: input.circleId,
+      fullName: input.fullName,
+      guardianPhone: input.guardianPhone,
+      approvalStatus: StudentApprovalStatus.PENDING
+    },
+    select: { id: true, fullName: true, circleId: true, approvalStatus: true }
+  });
+
+  writeAuditAsync({
+    tenantId: auth.tenantId,
+    actorId: auth.userId,
+    action: AuditAction.STUDENT_CREATE,
+    entityType: "Student",
+    entityId: student.id,
+    metadata: {
+      fullName: student.fullName,
+      circleId: student.circleId,
+      approvalStatus: student.approvalStatus,
+      source: "teacher"
+    }
+  });
+
+  return student;
 }
