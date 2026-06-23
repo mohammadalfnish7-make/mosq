@@ -1,7 +1,9 @@
 import { InputType, UserRole } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
+import { hashPassword } from "@/lib/password";
 import { getAuthContext } from "@/server/auth";
+import { HttpError } from "@/server/http";
 
 const uuid = z.string().uuid();
 
@@ -17,6 +19,8 @@ export const studentSchema = z.object({
 
 export const teacherSchema = z.object({
   fullName: z.string().trim().min(2).max(120),
+  email: z.string().trim().email().max(255),
+  password: z.string().min(8).max(128),
   phone: z.string().trim().max(30).optional(),
   circleId: uuid.optional()
 });
@@ -99,16 +103,26 @@ export async function createStudent(input: z.infer<typeof studentSchema>) {
 
 export async function createTeacher(input: z.infer<typeof teacherSchema>) {
   const auth = await getAuthContext(UserRole.ADMIN);
+  const email = input.email.toLowerCase();
+
+  const existing = await prisma.user.findUnique({ where: { email } });
+  if (existing) {
+    throw new HttpError(409, "البريد الإلكتروني مستخدم بالفعل");
+  }
+
+  const passwordHash = await hashPassword(input.password);
 
   return prisma.$transaction(async (tx) => {
     const teacher = await tx.user.create({
       data: {
         tenantId: auth.tenantId,
+        email,
+        passwordHash,
         fullName: input.fullName,
         phone: input.phone,
         role: UserRole.TEACHER
       },
-      select: { id: true, fullName: true, phone: true }
+      select: { id: true, fullName: true, phone: true, email: true }
     });
 
     if (input.circleId) {

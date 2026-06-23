@@ -1,6 +1,6 @@
-import { headers } from "next/headers";
 import { UserRole } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { getSession } from "@/lib/session";
 import { HttpError } from "@/server/http";
 
 export type AuthContext = {
@@ -11,27 +11,22 @@ export type AuthContext = {
 };
 
 export async function getAuthContext(requiredRole?: UserRole): Promise<AuthContext> {
-  const requestHeaders = await headers();
-  const requestedUserId = requestHeaders.get("x-user-id");
+  const session = await getSession();
 
-  const user = requestedUserId
-    ? await prisma.user.findFirst({
-        where: { id: requestedUserId, isActive: true }
-      })
-    : await prisma.user.findFirst({
-        where: {
-          isActive: true,
-          role: requiredRole ?? undefined
-        },
-        orderBy: { createdAt: "asc" }
-      });
+  if (!session) {
+    throw new HttpError(401, "يجب تسجيل الدخول أولاً");
+  }
+
+  const user = await prisma.user.findFirst({
+    where: { id: session.userId, isActive: true }
+  });
 
   if (!user) {
-    throw new HttpError(401, "No active user context found");
+    throw new HttpError(401, "المستخدم غير موجود أو غير نشط");
   }
 
   if (requiredRole && user.role !== requiredRole) {
-    throw new HttpError(403, "Insufficient permissions");
+    throw new HttpError(403, "ليس لديك صلاحية للوصول");
   }
 
   return {

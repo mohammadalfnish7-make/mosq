@@ -1,4 +1,5 @@
 import { listAdminBootstrap } from "@/server/admin";
+import { LogoutButton } from "@/components/LogoutButton";
 
 export const dynamic = "force-dynamic";
 
@@ -7,9 +8,12 @@ export default async function AdminPage() {
 
   return (
     <main className="mx-auto min-h-screen w-full max-w-5xl px-4 py-6">
-      <header className="mb-6">
-        <p className="text-sm font-bold text-teal">لوحة الإدارة</p>
-        <h1 className="mt-1 text-2xl font-bold">إعداد الحلقات والمعايير</h1>
+      <header className="mb-6 flex items-start justify-between gap-4">
+        <div>
+          <p className="text-sm font-bold text-teal">لوحة الإدارة</p>
+          <h1 className="mt-1 text-2xl font-bold">إعداد الحلقات والمعايير</h1>
+        </div>
+        <LogoutButton />
       </header>
 
       <div className="grid gap-4 lg:grid-cols-2">

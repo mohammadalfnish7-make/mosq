@@ -23,20 +23,20 @@ npm run dev
 
 Open `http://localhost:3000`.
 
-## Development Auth
+## Auth
 
-The MVP uses a server-side auth helper. During development it falls back to the first active user matching the required role.
+Login and registration are enabled with email + password.
 
-To force a user in API calls, send:
+- **Login:** `/login`
+- **Register mosque:** `/register` (creates a tenant + admin account)
+- **Logout:** `POST /api/auth/logout`
 
-```txt
-x-user-id: <uuid>
-```
+Set `AUTH_SECRET` in `.env` (at least 32 characters).
 
-Seeded users:
+Seeded dev accounts (password: `password123`):
 
-- Admin: `00000000-0000-0000-0000-000000000010`
-- Teacher: `00000000-0000-0000-0000-000000000011`
+- Admin: `admin@mosq.local`
+- Teacher: `teacher@mosq.local`
 
 ## Core API
 

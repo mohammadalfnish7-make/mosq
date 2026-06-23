@@ -17,6 +17,7 @@ services:
       - db
     environment:
       DATABASE_URL: postgresql://mosq:mosq@db:5432/mosq?schema=public
+      AUTH_SECRET: change-me-in-production-use-a-long-random-secret
     ports:
       - "3000:3000"
 
