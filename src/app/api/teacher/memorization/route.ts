@@ -1,13 +1,13 @@
 import { NextRequest } from "next/server";
-import { jsonData, jsonError } from "@/server/http";
-
-export const dynamic = "force-dynamic";
 import {
   getStudentMemorizationMap,
   memorizationQuerySchema,
   memorizationUpdateSchema,
   updateStudentMemorization
 } from "@/server/memorization";
+import { jsonData, jsonError } from "@/server/http";
+
+export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
   try {
@@ -22,7 +22,7 @@ export async function GET(request: NextRequest) {
 export async function PUT(request: NextRequest) {
   try {
     const input = memorizationUpdateSchema.parse(await request.json());
-    return NextResponse.json(await updateStudentMemorization(input));
+    return jsonData(await updateStudentMemorization(input));
   } catch (error) {
     return jsonError(error, { path: "/api/teacher/memorization" });
   }

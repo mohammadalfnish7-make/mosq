@@ -1,9 +1,9 @@
 import { NextRequest } from "next/server";
+import { getTeacherSessionForm } from "@/server/teacher";
+import { sessionFormQuerySchema } from "@/server/validation";
 import { jsonData, jsonError } from "@/server/http";
 
 export const dynamic = "force-dynamic";
-import { getTeacherSessionForm } from "@/server/teacher";
-import { sessionFormQuerySchema } from "@/server/validation";
 
 export async function GET(request: NextRequest) {
   try {
