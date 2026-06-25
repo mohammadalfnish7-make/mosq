@@ -24,6 +24,10 @@ export const AuditAction = {
   OPTION_UPDATE: "option.update",
   SESSION_BULK_SAVE: "session.bulk_save",
   MEMORIZATION_UPDATE: "memorization.update",
+  TENANT_CREATE: "tenant.create",
+  TENANT_ACTIVATE: "tenant.activate",
+  TENANT_DEACTIVATE: "tenant.deactivate",
+  TENANT_DELETE: "tenant.delete",
   SERVER_ERROR: "server.error"
 } as const;
 

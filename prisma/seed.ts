@@ -1,15 +1,45 @@
 import { PrismaClient, InputType, UserRole } from "@prisma/client";
 import bcrypt from "bcryptjs";
+import { PLATFORM_TENANT_ID } from "../src/lib/platform";
 import { seedSurahs } from "./seed-surahs";
 
 const prisma = new PrismaClient();
 
 const DEV_PASSWORD = "password123";
+const PLATFORM_ADMIN_EMAIL = process.env.PLATFORM_ADMIN_EMAIL ?? "platform@mosq.local";
+const PLATFORM_ADMIN_PASSWORD = process.env.PLATFORM_ADMIN_PASSWORD ?? DEV_PASSWORD;
 
 async function main() {
   await seedSurahs(prisma);
 
   const passwordHash = await bcrypt.hash(DEV_PASSWORD, 12);
+  const platformPasswordHash = await bcrypt.hash(PLATFORM_ADMIN_PASSWORD, 12);
+
+  const platformTenant = await prisma.tenant.upsert({
+    where: { id: PLATFORM_TENANT_ID },
+    update: { name: "منصة Mosq", isActive: true },
+    create: {
+      id: PLATFORM_TENANT_ID,
+      name: "منصة Mosq",
+      isActive: true
+    }
+  });
+
+  const platformAdmin = await prisma.user.upsert({
+    where: { id: "00000000-0000-0000-0000-000000000001" },
+    update: {
+      email: PLATFORM_ADMIN_EMAIL,
+      passwordHash: platformPasswordHash
+    },
+    create: {
+      id: "00000000-0000-0000-0000-000000000001",
+      tenantId: platformTenant.id,
+      email: PLATFORM_ADMIN_EMAIL,
+      passwordHash: platformPasswordHash,
+      fullName: "مالك المنصة",
+      role: UserRole.PLATFORM_ADMIN
+    }
+  });
 
   const tenant = await prisma.tenant.upsert({
     where: { id: "00000000-0000-0000-0000-000000000001" },
@@ -158,6 +188,11 @@ async function main() {
   }
 
   console.log({
+    platformAdmin: {
+      name: platformAdmin.fullName,
+      email: platformAdmin.email,
+      password: PLATFORM_ADMIN_PASSWORD
+    },
     tenant: tenant.name,
     admin: { name: admin.fullName, email: admin.email, password: DEV_PASSWORD },
     teacher: { name: teacher.fullName, email: teacher.email, password: DEV_PASSWORD },

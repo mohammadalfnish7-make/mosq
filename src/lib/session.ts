@@ -40,7 +40,7 @@ export async function verifySessionToken(token: string): Promise<SessionPayload 
       typeof userId !== "string" ||
       typeof tenantId !== "string" ||
       typeof fullName !== "string" ||
-      (role !== UserRole.ADMIN && role !== UserRole.TEACHER)
+      (role !== UserRole.PLATFORM_ADMIN && role !== UserRole.ADMIN && role !== UserRole.TEACHER)
     ) {
       return null;
     }

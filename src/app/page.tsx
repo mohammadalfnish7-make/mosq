@@ -1,6 +1,8 @@
 import Link from "next/link";
+import { UserRole } from "@prisma/client";
 import { getCurrentUser } from "@/server/auth-service";
 import { LogoutButton } from "@/components/LogoutButton";
+import { homePathForRole, roleLabel } from "@/lib/role-routing";
 
 export const dynamic = "force-dynamic";
 
@@ -17,14 +19,22 @@ export default async function HomePage() {
         </p>
         {user ? (
           <p className="mt-4 rounded-lg bg-mint px-4 py-3 text-sm font-semibold text-ink">
-            مرحباً {user.fullName} ({user.role === "ADMIN" ? "مشرف" : "معلم"})
+            مرحباً {user.fullName} ({roleLabel(user.role)})
           </p>
         ) : null}
       </section>
 
       {user ? (
         <nav className="grid gap-3 sm:grid-cols-2">
-          {user.role === "TEACHER" ? (
+          {user.role === UserRole.PLATFORM_ADMIN ? (
+            <Link
+              href={homePathForRole(user.role)}
+              className="tap-target rounded-lg bg-teal px-5 py-4 text-center font-bold text-white shadow-sm sm:col-span-2"
+            >
+              لوحة المنصة
+            </Link>
+          ) : null}
+          {user.role === UserRole.TEACHER ? (
             <Link
               href="/teacher"
               className="tap-target rounded-lg bg-teal px-5 py-4 text-center font-bold text-white shadow-sm"
@@ -32,7 +42,7 @@ export default async function HomePage() {
               واجهة المعلم
             </Link>
           ) : null}
-          {user.role === "ADMIN" ? (
+          {user.role === UserRole.ADMIN ? (
             <Link
               href="/admin"
               className="tap-target rounded-lg border border-ink/15 bg-white px-5 py-4 text-center font-bold text-ink shadow-sm"
@@ -45,19 +55,13 @@ export default async function HomePage() {
           </div>
         </nav>
       ) : (
-        <nav className="grid gap-3 sm:grid-cols-2">
+        <nav>
           <Link
             href="/login"
-            className="tap-target rounded-lg bg-teal px-5 py-4 text-center font-bold text-white shadow-sm"
+            className="tap-target block rounded-lg bg-teal px-5 py-4 text-center font-bold text-white shadow-sm"
           >
             تسجيل الدخول
           </Link>
-          {/* <Link
-            href="/register"
-            className="tap-target rounded-lg border border-ink/15 bg-white px-5 py-4 text-center font-bold text-ink shadow-sm"
-          >
-            تسجيل مسجد جديد
-          </Link> */}
         </nav>
       )}
     </main>

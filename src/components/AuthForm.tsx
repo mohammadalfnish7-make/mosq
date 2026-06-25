@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { FormEvent, useState } from "react";
+import { homePathForRole } from "@/lib/role-routing";
 
 function AuthError({ message }: { message: string }) {
   return <p className="rounded-lg bg-clay/10 px-3 py-2 text-sm font-semibold text-clay">{message}</p>;
@@ -160,9 +161,7 @@ export function LoginForm() {
         return;
       }
 
-      const destination =
-        nextPath ??
-        (data.user.role === "ADMIN" ? "/admin" : data.user.role === "TEACHER" ? "/teacher" : "/");
+      const destination = nextPath ?? homePathForRole(data.user.role);
       router.push(destination);
       router.refresh();
     } catch {
@@ -205,13 +204,6 @@ export function LoginForm() {
       >
         {loading ? "جاري المعالجة..." : "تسجيل الدخول"}
       </button>
-
-      <p className="text-center text-sm text-ink/70">
-        ليس لديك حساب؟{" "}
-        <Link className="font-bold text-teal" href="/register">
-          سجّل مسجدك
-        </Link>
-      </p>
     </form>
   );
 }

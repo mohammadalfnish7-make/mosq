@@ -21,7 +21,10 @@ export const registerSchema = z.object({
 
 export async function loginUser(input: z.infer<typeof loginSchema>, meta?: RequestMeta) {
   const email = input.email.toLowerCase();
-  const user = await prisma.user.findUnique({ where: { email } });
+  const user = await prisma.user.findUnique({
+    where: { email },
+    include: { tenant: { select: { isActive: true } } }
+  });
 
   if (!user || !user.isActive) {
     writeAuditAsync({
@@ -30,6 +33,17 @@ export async function loginUser(input: z.infer<typeof loginSchema>, meta?: Reque
       ...meta
     });
     throw new HttpError(401, "البريد الإلكتروني أو كلمة المرور غير صحيحة");
+  }
+
+  if (user.role !== UserRole.PLATFORM_ADMIN && !user.tenant.isActive) {
+    writeAuditAsync({
+      tenantId: user.tenantId,
+      actorId: user.id,
+      action: AuditAction.AUTH_LOGIN_FAILED,
+      metadata: { email, reason: "tenant_inactive" },
+      ...meta
+    });
+    throw new HttpError(403, "تم إيقاف حساب المسجد. تواصل مع إدارة المنصة.");
   }
 
   const valid = await verifyPassword(input.password, user.passwordHash);
@@ -62,7 +76,7 @@ export async function loginUser(input: z.infer<typeof loginSchema>, meta?: Reque
   };
 }
 
-export async function registerMosque(input: z.infer<typeof registerSchema>, meta?: RequestMeta) {
+export async function createTenantWithAdmin(input: z.infer<typeof registerSchema>) {
   const email = input.email.toLowerCase();
   const existing = await prisma.user.findUnique({ where: { email } });
   if (existing) {
@@ -71,21 +85,28 @@ export async function registerMosque(input: z.infer<typeof registerSchema>, meta
 
   const passwordHash = await hashPassword(input.password);
 
-  const user = await prisma.$transaction(async (tx) => {
+  return prisma.$transaction(async (tx) => {
     const tenant = await tx.tenant.create({
       data: { name: input.mosqueName }
     });
 
-    return tx.user.create({
+    const admin = await tx.user.create({
       data: {
         tenantId: tenant.id,
         email,
         passwordHash,
         fullName: input.fullName,
         role: UserRole.ADMIN
-      }
+      },
+      select: { id: true, email: true, fullName: true, tenantId: true, role: true }
     });
+
+    return { tenant, admin };
   });
+}
+
+export async function registerMosque(input: z.infer<typeof registerSchema>, meta?: RequestMeta) {
+  const { tenant, admin: user } = await createTenantWithAdmin(input);
 
   const session = await buildSession(user);
   const token = await createSessionToken(session);

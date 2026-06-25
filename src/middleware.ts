@@ -4,13 +4,16 @@ import { AuditAction, postAuditFromEdge } from "@/lib/audit";
 import { getRequestMeta } from "@/lib/request-meta";
 import { SESSION_COOKIE, verifySessionToken } from "@/lib/session";
 
-const PUBLIC_PATHS = ["/", "/login", "/register"];
+const PUBLIC_PATHS = ["/", "/login"];
 
 function isPublicPath(pathname: string) {
   return PUBLIC_PATHS.includes(pathname);
 }
 
 function requiredRoleForPath(pathname: string): UserRole | null {
+  if (pathname.startsWith("/platform") || pathname.startsWith("/api/platform")) {
+    return UserRole.PLATFORM_ADMIN;
+  }
   if (pathname.startsWith("/admin") || pathname.startsWith("/api/admin")) {
     return UserRole.ADMIN;
   }
@@ -71,5 +74,12 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/admin/:path*", "/teacher/:path*", "/api/admin/:path*", "/api/teacher/:path*"]
+  matcher: [
+    "/platform/:path*",
+    "/admin/:path*",
+    "/teacher/:path*",
+    "/api/platform/:path*",
+    "/api/admin/:path*",
+    "/api/teacher/:path*"
+  ]
 };
