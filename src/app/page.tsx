@@ -52,12 +52,12 @@ export default async function HomePage() {
           >
             تسجيل الدخول
           </Link>
-          <Link
+          {/* <Link
             href="/register"
             className="tap-target rounded-lg border border-ink/15 bg-white px-5 py-4 text-center font-bold text-ink shadow-sm"
           >
             تسجيل مسجد جديد
-          </Link>
+          </Link> */}
         </nav>
       )}
     </main>

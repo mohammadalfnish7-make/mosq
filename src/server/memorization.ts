@@ -2,8 +2,10 @@ import { StudentApprovalStatus, SurahStatus, UserRole } from "@prisma/client";
 import { z } from "zod";
 import { AuditAction, writeAuditAsync } from "@/lib/audit";
 import { pickCurrentSurah } from "@/lib/current-surah";
+import { periodLabel } from "@/lib/attendance";
 import {
   loadEvaluationDerivedProgress,
+  loadMemorizationEvaluationHistory,
   mergeSurahProgressRows
 } from "@/lib/memorization-progress";
 import { prisma } from "@/lib/prisma";
@@ -53,7 +55,7 @@ export async function getStudentMemorizationMap(input: z.infer<typeof memorizati
   await assertTeacherCircleAccess(auth.tenantId, auth.userId, input.circleId);
   const student = await assertStudentInCircle(auth.tenantId, input.circleId, input.studentId);
 
-  const [surahs, progressRows, derivedByStudent] = await Promise.all([
+  const [surahs, progressRows, derivedByStudent, memorizationHistory] = await Promise.all([
     prisma.surah.findMany({ orderBy: { number: "asc" } }),
     prisma.studentSurahProgress.findMany({
       where: { tenantId: auth.tenantId, studentId: input.studentId },
@@ -65,7 +67,8 @@ export async function getStudentMemorizationMap(input: z.infer<typeof memorizati
         surah: { select: { number: true, nameAr: true, juz: true } }
       }
     }),
-    loadEvaluationDerivedProgress(prisma, auth.tenantId, [input.studentId])
+    loadEvaluationDerivedProgress(prisma, auth.tenantId, [input.studentId]),
+    loadMemorizationEvaluationHistory(prisma, auth.tenantId, [input.studentId])
   ]);
 
   const mergedProgress = mergeSurahProgressRows(
@@ -103,7 +106,15 @@ export async function getStudentMemorizationMap(input: z.infer<typeof memorizati
     student: { id: student.id, fullName: student.fullName },
     currentSurah,
     summary,
-    items
+    items,
+    evaluations: memorizationHistory.map((row) => ({
+      surahNumber: row.surahNumber,
+      surahName: row.surahName,
+      valueLabel: row.valueLabel,
+      sessionDate: row.sessionDate,
+      periodLabel: periodLabel(row.periodCode),
+      evaluatedAt: row.evaluatedAt.toISOString()
+    }))
   };
 }
 

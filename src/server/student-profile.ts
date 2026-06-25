@@ -4,6 +4,7 @@ import { ATTENDANCE_LABELS, periodLabel } from "@/lib/attendance";
 import { pickCurrentSurah } from "@/lib/current-surah";
 import {
   loadEvaluationDerivedProgress,
+  loadMemorizationEvaluationHistory,
   mergeSurahProgressRows
 } from "@/lib/memorization-progress";
 import { gradeLabel } from "@/lib/syrian-grades";
@@ -72,7 +73,8 @@ async function loadStudentProfile(
   student: StudentRow,
   options: { includeShareUrl: boolean; baseUrl?: string }
 ): Promise<StudentProfile> {
-  const [progressRows, derivedByStudent, surahs, attendanceRows, evaluationRows] = await Promise.all([
+  const [progressRows, derivedByStudent, memorizationHistory, surahs, attendanceRows, evaluationRows] =
+    await Promise.all([
     prisma.studentSurahProgress.findMany({
       where: { tenantId: student.tenantId, studentId: student.id },
       select: {
@@ -83,6 +85,7 @@ async function loadStudentProfile(
       }
     }),
     loadEvaluationDerivedProgress(prisma, student.tenantId, [student.id]),
+    loadMemorizationEvaluationHistory(prisma, student.tenantId, [student.id]),
     prisma.surah.findMany({ orderBy: { number: "asc" }, select: { number: true, nameAr: true, juz: true } }),
     prisma.attendanceEntry.findMany({
       where: { tenantId: student.tenantId, studentId: student.id },
@@ -158,7 +161,18 @@ async function loadStudentProfile(
       gradeLabel: gradeLabel(student.circle.gradeCode)
     },
     currentSurah,
-    memorization: { summary, items: memorizationItems },
+    memorization: {
+      summary,
+      items: memorizationItems,
+      evaluations: memorizationHistory.map((row) => ({
+        surahNumber: row.surahNumber,
+        surahName: row.surahName,
+        valueLabel: row.valueLabel,
+        sessionDate: row.sessionDate,
+        periodLabel: periodLabel(row.periodCode),
+        evaluatedAt: row.evaluatedAt.toISOString()
+      }))
+    },
     attendance: attendanceRows.map((row) => ({
       sessionDate: row.session.sessionDate.toISOString().slice(0, 10),
       periodCode: row.session.periodCode,

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { STUDENT_APPROVAL_LABELS } from "@/lib/student-approval";
 import { SURAH_STATUS_LABELS } from "@/lib/surahs";
 import type { StudentProfile } from "@/types/student-profile";
@@ -31,6 +31,16 @@ export function StudentProfileView({
   const [shareUrl, setShareUrl] = useState(profile.guardianShareUrl);
   const [copyStatus, setCopyStatus] = useState<"idle" | "copied" | "error">("idle");
   const [regenerating, setRegenerating] = useState(false);
+
+  const memorizationHistoryBySurah = useMemo(() => {
+    const grouped = new Map<number, StudentProfile["memorization"]["evaluations"]>();
+    for (const row of profile.memorization.evaluations) {
+      const list = grouped.get(row.surahNumber) ?? [];
+      list.push(row);
+      grouped.set(row.surahNumber, list);
+    }
+    return grouped;
+  }, [profile.memorization.evaluations]);
 
   async function copyShareLink() {
     if (!shareUrl) return;
@@ -144,21 +154,42 @@ export function StudentProfileView({
           محفوظ: {profile.memorization.summary.memorized} · قيد الحفظ:{" "}
           {profile.memorization.summary.inProgress} · مراجعة: {profile.memorization.summary.needsRevision}
         </p>
-        {profile.memorization.items.length === 0 ? (
+        {profile.memorization.items.length === 0 &&
+        profile.memorization.evaluations.length === 0 ? (
           <p className="mt-3 text-sm text-ink/60">لا يوجد تقدم مسجّل بعد</p>
         ) : (
           <ul className="mt-3 space-y-2">
-            {profile.memorization.items.map((item) => (
-              <li
-                key={item.number}
-                className={`flex items-center justify-between gap-2 rounded-lg px-3 py-2 text-sm ${STATUS_STYLES[item.status] ?? "bg-paper"}`}
-              >
-                <span className="font-semibold">
-                  {item.number}. {item.nameAr}
-                </span>
-                <span className="text-xs font-bold">{SURAH_STATUS_LABELS[item.status]}</span>
-              </li>
-            ))}
+            {profile.memorization.items.map((item) => {
+              const history = memorizationHistoryBySurah.get(item.number) ?? [];
+              return (
+                <li
+                  key={item.number}
+                  className={`rounded-lg px-3 py-2 text-sm ${STATUS_STYLES[item.status] ?? "bg-paper"}`}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-semibold">
+                      {item.number}. {item.nameAr}
+                    </span>
+                    <span className="text-xs font-bold">{SURAH_STATUS_LABELS[item.status]}</span>
+                  </div>
+                  {history.length > 0 ? (
+                    <ul className="mt-2 space-y-1 border-t border-ink/10 pt-2">
+                      {history.map((row) => (
+                        <li
+                          key={`${row.evaluatedAt}-${row.sessionDate}-${row.periodLabel}`}
+                          className="flex items-center justify-between gap-2 text-xs text-ink/70"
+                        >
+                          <span>
+                            {row.sessionDate} · {row.periodLabel}
+                          </span>
+                          <span className="font-bold text-teal">{row.valueLabel}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
+                </li>
+              );
+            })}
           </ul>
         )}
       </section>

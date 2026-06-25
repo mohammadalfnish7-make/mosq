@@ -36,6 +36,14 @@ export type StudentProfile = {
       statusLabel: string;
       juz: number;
     }[];
+    evaluations: {
+      surahNumber: number;
+      surahName: string;
+      valueLabel: string;
+      sessionDate: string;
+      periodLabel: string;
+      evaluatedAt: string;
+    }[];
   };
   attendance: {
     sessionDate: string;

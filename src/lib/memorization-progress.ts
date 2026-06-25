@@ -43,28 +43,11 @@ export async function loadEvaluationDerivedProgress(
     return new Map();
   }
 
-  const evaluations = await db.evaluationEntry.findMany({
-    where: {
-      tenantId,
-      studentId: { in: studentIds },
-      surahNumber: { not: null },
-      optionId: { not: null },
-      criterion: { code: "memorization" }
-    },
-    orderBy: { createdAt: "desc" },
-    select: {
-      studentId: true,
-      surahNumber: true,
-      createdAt: true,
-      option: { select: { value: true } },
-      surah: { select: { number: true, nameAr: true, juz: true } }
-    }
-  });
+  const evaluations = await loadMemorizationEvaluationHistory(db, tenantId, studentIds);
 
   const byStudent = new Map<string, Map<number, SurahProgressSnapshot>>();
   for (const entry of evaluations) {
-    if (!entry.surahNumber || !entry.surah) continue;
-    const status = memorizationStatusFromOptionValue(entry.option?.value ?? "");
+    const status = memorizationStatusFromOptionValue(entry.optionValue);
     if (!status) continue;
 
     let bySurah = byStudent.get(entry.studentId);
@@ -72,12 +55,13 @@ export async function loadEvaluationDerivedProgress(
       bySurah = new Map();
       byStudent.set(entry.studentId, bySurah);
     }
+    // Latest evaluation per surah is used only to derive the current map status.
     if (bySurah.has(entry.surahNumber)) continue;
 
     bySurah.set(entry.surahNumber, {
       surahNumber: entry.surahNumber,
       status,
-      updatedAt: entry.createdAt,
+      updatedAt: entry.evaluatedAt,
       surah: entry.surah
     });
   }
@@ -87,6 +71,66 @@ export async function loadEvaluationDerivedProgress(
     result.set(studentId, [...bySurah.values()]);
   }
   return result;
+}
+
+export type MemorizationEvaluationHistoryRow = {
+  studentId: string;
+  surahNumber: number;
+  surahName: string;
+  valueLabel: string;
+  optionValue: string;
+  sessionDate: string;
+  periodCode: string;
+  evaluatedAt: Date;
+  surah: { number: number; nameAr: string; juz?: number };
+};
+
+export async function loadMemorizationEvaluationHistory(
+  db: PrismaClient | Prisma.TransactionClient,
+  tenantId: string,
+  studentIds: string[],
+  limit = 50
+): Promise<MemorizationEvaluationHistoryRow[]> {
+  if (studentIds.length === 0) {
+    return [];
+  }
+
+  const rows = await db.evaluationEntry.findMany({
+    where: {
+      tenantId,
+      studentId: { in: studentIds },
+      surahNumber: { not: null },
+      optionId: { not: null },
+      criterion: { code: "memorization" }
+    },
+    orderBy: { createdAt: "desc" },
+    take: limit,
+    select: {
+      studentId: true,
+      surahNumber: true,
+      createdAt: true,
+      option: { select: { label: true, value: true } },
+      surah: { select: { number: true, nameAr: true, juz: true } },
+      session: { select: { sessionDate: true, periodCode: true } }
+    }
+  });
+
+  return rows.flatMap((row) => {
+    if (!row.surahNumber || !row.surah || !row.option) return [];
+    return [
+      {
+        studentId: row.studentId,
+        surahNumber: row.surahNumber,
+        surahName: row.surah.nameAr,
+        valueLabel: row.option.label,
+        optionValue: row.option.value,
+        sessionDate: row.session.sessionDate.toISOString().slice(0, 10),
+        periodCode: row.session.periodCode,
+        evaluatedAt: row.createdAt,
+        surah: row.surah
+      }
+    ];
+  });
 }
 
 type SessionMemorizationEvaluation = {

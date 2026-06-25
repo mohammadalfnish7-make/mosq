@@ -36,6 +36,14 @@ type MemorizationPayload = {
     notStarted: number;
   };
   items: SurahItem[];
+  evaluations: {
+    surahNumber: number;
+    surahName: string;
+    valueLabel: string;
+    sessionDate: string;
+    periodLabel: string;
+    evaluatedAt: string;
+  }[];
 };
 
 const STATUS_STYLES: Record<SurahStatusValue, string> = {
@@ -102,6 +110,17 @@ function MemorizationPanel({
       );
     });
   }, [juzFilter, payload, search, statusFilter]);
+
+  const evaluationsBySurah = useMemo(() => {
+    if (!payload) return new Map<number, MemorizationPayload["evaluations"]>();
+    const grouped = new Map<number, MemorizationPayload["evaluations"]>();
+    for (const row of payload.evaluations) {
+      const list = grouped.get(row.surahNumber) ?? [];
+      list.push(row);
+      grouped.set(row.surahNumber, list);
+    }
+    return grouped;
+  }, [payload]);
 
   async function updateSurahStatus(surahNumber: number, statusValue: SurahStatusValue) {
     setSavingSurah(surahNumber);
@@ -242,31 +261,51 @@ function MemorizationPanel({
           ) : (
             filteredItems.map((item) => {
               const isCurrent = payload.currentSurah?.number === item.number;
+              const history = evaluationsBySurah.get(item.number) ?? [];
               return (
-              <button
+              <div
                 key={item.number}
-                type="button"
-                disabled={savingSurah === item.number}
-                className={`flex w-full items-center justify-between gap-3 rounded-lg border px-3 py-3 text-right transition disabled:opacity-60 ${STATUS_STYLES[item.status]} ${isCurrent ? "ring-2 ring-amber-400" : ""}`}
-                onClick={() => void updateSurahStatus(item.number, nextStatus(item.status))}
+                className={`rounded-lg border ${STATUS_STYLES[item.status]} ${isCurrent ? "ring-2 ring-amber-400" : ""}`}
               >
-                <div>
-                  <p className="font-bold">
-                    {item.number}. {item.nameAr}
-                    {isCurrent ? (
-                      <span className="mr-2 rounded bg-amber-200 px-1.5 py-0.5 text-[10px] text-amber-900">
-                        الحالية
-                      </span>
-                    ) : null}
-                  </p>
-                  <p className="text-xs opacity-70">
-                    {item.ayahCount} آية · الجزء {item.juz}
-                  </p>
-                </div>
-                <span className="shrink-0 rounded-md bg-white/80 px-2 py-1 text-xs font-bold">
-                  {SURAH_STATUS_LABELS[item.status]}
-                </span>
-              </button>
+                <button
+                  type="button"
+                  disabled={savingSurah === item.number}
+                  className="flex w-full items-center justify-between gap-3 px-3 py-3 text-right transition disabled:opacity-60"
+                  onClick={() => void updateSurahStatus(item.number, nextStatus(item.status))}
+                >
+                  <div>
+                    <p className="font-bold">
+                      {item.number}. {item.nameAr}
+                      {isCurrent ? (
+                        <span className="mr-2 rounded bg-amber-200 px-1.5 py-0.5 text-[10px] text-amber-900">
+                          الحالية
+                        </span>
+                      ) : null}
+                    </p>
+                    <p className="text-xs opacity-70">
+                      {item.ayahCount} آية · الجزء {item.juz}
+                    </p>
+                  </div>
+                  <span className="shrink-0 rounded-md bg-white/80 px-2 py-1 text-xs font-bold">
+                    {SURAH_STATUS_LABELS[item.status]}
+                  </span>
+                </button>
+                {history.length > 0 ? (
+                  <ul className="space-y-1 border-t border-ink/10 px-3 py-2">
+                    {history.map((row) => (
+                      <li
+                        key={`${row.evaluatedAt}-${row.sessionDate}-${row.periodLabel}`}
+                        className="flex items-center justify-between gap-2 text-xs text-ink/70"
+                      >
+                        <span>
+                          {row.sessionDate} · {row.periodLabel}
+                        </span>
+                        <span className="font-bold text-teal">{row.valueLabel}</span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+              </div>
             );
             })
           )}
