@@ -2,8 +2,8 @@ import { NextRequest } from "next/server";
 import { getRequestMeta } from "@/lib/request-meta";
 import {
   deletePlatformTenant,
-  tenantStatusSchema,
-  updatePlatformTenantStatus
+  tenantPatchSchema,
+  updatePlatformTenant
 } from "@/server/platform";
 import { jsonData, jsonError } from "@/server/http";
 
@@ -12,8 +12,8 @@ type RouteContext = { params: Promise<{ id: string }> };
 export async function PATCH(request: NextRequest, context: RouteContext) {
   try {
     const { id } = await context.params;
-    const input = tenantStatusSchema.parse(await request.json());
-    const tenant = await updatePlatformTenantStatus(id, input, getRequestMeta(request));
+    const input = tenantPatchSchema.parse(await request.json());
+    const tenant = await updatePlatformTenant(id, input, getRequestMeta(request));
     return jsonData(tenant);
   } catch (error) {
     return jsonError(error, { path: "/api/platform/tenants/[id]" });

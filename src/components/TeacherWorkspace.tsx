@@ -351,9 +351,7 @@ function AddStudentPanel({
         body: JSON.stringify({
           circleId,
           fullName: String(data.get("fullName") ?? "").trim(),
-          ...(String(data.get("guardianPhone") ?? "").trim()
-            ? { guardianPhone: String(data.get("guardianPhone")).trim() }
-            : {})
+          guardianPhone: String(data.get("guardianPhone") ?? "").trim()
         })
       });
       const payload = await response.json();
@@ -398,7 +396,8 @@ function AddStudentPanel({
             <input
               className="tap-target rounded-lg border border-ink/15 bg-white px-3"
               name="guardianPhone"
-              placeholder="هاتف ولي الأمر (اختياري)"
+              placeholder="هاتف ولي الأمر"
+              required
               maxLength={30}
             />
             {error ? <p className="text-sm font-semibold text-clay">{error}</p> : null}

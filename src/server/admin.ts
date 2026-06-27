@@ -8,6 +8,7 @@ import { HttpError } from "@/server/http";
 import type { AdminBootstrap } from "@/types/admin-bootstrap";
 
 import { isValidGradeCode } from "@/lib/syrian-grades";
+import { guardianPhoneSchema, phoneSchema } from "@/server/validation";
 
 const uuid = z.string().uuid();
 
@@ -26,14 +27,14 @@ export const circleSchema = z.object({
 export const studentSchema = z.object({
   circleId: uuid,
   fullName: z.string().trim().min(2).max(120),
-  guardianPhone: z.string().trim().max(30).optional()
+  guardianPhone: guardianPhoneSchema
 });
 
 export const teacherSchema = z.object({
   fullName: z.string().trim().min(2).max(120),
   email: z.string().trim().email().max(255),
   password: z.string().min(8).max(128),
-  phone: z.string().trim().max(30).optional(),
+  phone: phoneSchema,
   circleId: uuid.optional()
 });
 
@@ -66,7 +67,7 @@ export const studentUpdateSchema = studentSchema.extend({
 export const teacherUpdateSchema = z.object({
   fullName: z.string().trim().min(2).max(120),
   email: z.string().trim().email().max(255),
-  phone: z.string().trim().max(30).optional().nullable(),
+  phone: phoneSchema,
   password: z.string().min(8).max(128).optional(),
   circleId: uuid.nullable().optional(),
   isActive: z.boolean().optional()
@@ -341,7 +342,7 @@ export async function updateStudent(id: string, input: z.infer<typeof studentUpd
     data: {
       fullName: input.fullName,
       circleId: input.circleId,
-      guardianPhone: input.guardianPhone ?? null,
+      guardianPhone: input.guardianPhone,
       ...(input.isActive !== undefined ? { isActive: input.isActive } : {}),
       ...(input.approvalStatus !== undefined ? { approvalStatus: input.approvalStatus } : {})
     },
@@ -407,7 +408,7 @@ export async function updateTeacher(id: string, input: z.infer<typeof teacherUpd
       data: {
         fullName: input.fullName,
         email,
-        phone: input.phone ?? null,
+        phone: input.phone,
         ...(passwordHash ? { passwordHash } : {}),
         ...(input.isActive !== undefined ? { isActive: input.isActive } : {})
       },

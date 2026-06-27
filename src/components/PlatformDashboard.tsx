@@ -2,7 +2,7 @@
 
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
-import type { PlatformBootstrap } from "@/types/platform-bootstrap";
+import type { PlatformBootstrap, PlatformTenantSummary } from "@/types/platform-bootstrap";
 
 function FormError({ message }: { message: string }) {
   return <p className="rounded-lg bg-clay/10 px-3 py-2 text-sm font-semibold text-clay">{message}</p>;
@@ -157,11 +157,96 @@ function CreateTenantPanel({ onCreated }: { onCreated: () => void }) {
   );
 }
 
+function EditTenantPanel({
+  tenant,
+  onUpdated,
+  onCancel
+}: {
+  tenant: PlatformTenantSummary;
+  onUpdated: (tenant: PlatformTenantSummary) => void;
+  onCancel: () => void;
+}) {
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError(null);
+    setLoading(true);
+
+    const form = new FormData(event.currentTarget);
+    const mosqueName = String(form.get("mosqueName") ?? "").trim();
+    const adminName = String(form.get("adminName") ?? "").trim();
+    const adminEmail = String(form.get("adminEmail") ?? "").trim();
+
+    try {
+      const updated = await requestJson("PATCH", `/api/platform/tenants/${tenant.id}`, {
+        mosqueName,
+        adminName,
+        adminEmail
+      });
+      onUpdated({
+        ...tenant,
+        name: updated.name,
+        adminName: updated.adminName,
+        adminEmail: updated.adminEmail,
+        isActive: updated.isActive
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "تعذر حفظ التعديلات");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <form className="mt-3 grid gap-3 rounded-lg border border-ink/10 bg-paper p-4" onSubmit={handleSubmit}>
+      <p className="text-sm font-bold text-ink">تعديل بيانات المسجد</p>
+      <label className="grid gap-1">
+        <span className={labelClass}>اسم المسجد</span>
+        <input className={fieldClass} name="mosqueName" required minLength={2} defaultValue={tenant.name} />
+      </label>
+      <label className="grid gap-1">
+        <span className={labelClass}>اسم المشرف</span>
+        <input
+          className={fieldClass}
+          name="adminName"
+          required
+          minLength={2}
+          defaultValue={tenant.adminName ?? ""}
+        />
+      </label>
+      <label className="grid gap-1">
+        <span className={labelClass}>البريد الإلكتروني للمشرف</span>
+        <input
+          className={fieldClass}
+          name="adminEmail"
+          type="email"
+          required
+          defaultValue={tenant.adminEmail ?? ""}
+        />
+      </label>
+
+      {error ? <FormError message={error} /> : null}
+
+      <div className="flex flex-wrap gap-2">
+        <button className={buttonClass} type="submit" disabled={loading}>
+          {loading ? "جاري الحفظ..." : "حفظ التعديلات"}
+        </button>
+        <button className={ghostButtonClass} type="button" onClick={onCancel} disabled={loading}>
+          إلغاء
+        </button>
+      </div>
+    </form>
+  );
+}
+
 export function PlatformDashboard({ data }: { data: PlatformBootstrap }) {
   const router = useRouter();
   const [tenants, setTenants] = useState(data.tenants);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   async function refreshTenants() {
     const next = await requestJson("GET", "/api/platform/tenants");
@@ -240,7 +325,24 @@ export function PlatformDashboard({ data }: { data: PlatformBootstrap }) {
               <tbody>
                 {tenants.map((tenant) => (
                   <tr key={tenant.id} className="border-b border-ink/5 align-top">
-                    <td className="px-2 py-3 font-bold text-ink">{tenant.name}</td>
+                    <td className="px-2 py-3 font-bold text-ink" colSpan={editingId === tenant.id ? 6 : 1}>
+                      {tenant.name}
+                      {editingId === tenant.id ? (
+                        <EditTenantPanel
+                          tenant={tenant}
+                          onCancel={() => setEditingId(null)}
+                          onUpdated={(updated) => {
+                            setTenants((current) =>
+                              current.map((item) => (item.id === updated.id ? updated : item))
+                            );
+                            setEditingId(null);
+                            router.refresh();
+                          }}
+                        />
+                      ) : null}
+                    </td>
+                    {editingId === tenant.id ? null : (
+                      <>
                     <td className="px-2 py-3">
                       <p>{tenant.adminName ?? "—"}</p>
                       <p className="text-xs text-ink/60">{tenant.adminEmail ?? "—"}</p>
@@ -259,6 +361,14 @@ export function PlatformDashboard({ data }: { data: PlatformBootstrap }) {
                           className={ghostButtonClass}
                           type="button"
                           disabled={busyId === tenant.id}
+                          onClick={() => setEditingId(tenant.id)}
+                        >
+                          تعديل
+                        </button>
+                        <button
+                          className={ghostButtonClass}
+                          type="button"
+                          disabled={busyId === tenant.id}
                           onClick={() => toggleTenantStatus(tenant.id, !tenant.isActive)}
                         >
                           {tenant.isActive ? "إيقاف" : "تفعيل"}
@@ -273,6 +383,8 @@ export function PlatformDashboard({ data }: { data: PlatformBootstrap }) {
                         </button>
                       </div>
                     </td>
+                      </>
+                    )}
                   </tr>
                 ))}
               </tbody>

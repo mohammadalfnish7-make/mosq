@@ -3,6 +3,18 @@ import { z } from "zod";
 
 const uuid = z.string().uuid();
 
+export const guardianPhoneSchema = z
+  .string()
+  .trim()
+  .min(1, "هاتف ولي الأمر مطلوب")
+  .max(30);
+
+export const phoneSchema = z
+  .string()
+  .trim()
+  .min(1, "رقم الهاتف مطلوب")
+  .max(30);
+
 export const sessionFormQuerySchema = z.object({
   circleId: uuid,
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),

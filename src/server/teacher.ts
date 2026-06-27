@@ -10,14 +10,14 @@ import {
 import { prisma } from "@/lib/prisma";
 import { getAuthContext, assertTeacherCircleAccess } from "@/server/auth";
 import { HttpError } from "@/server/http";
-import { BulkSaveInput, validateCriterionValue } from "@/server/validation";
+import { BulkSaveInput, guardianPhoneSchema, validateCriterionValue } from "@/server/validation";
 
 const uuid = z.string().uuid();
 
 export const teacherStudentSchema = z.object({
   circleId: uuid,
   fullName: z.string().trim().min(2).max(120),
-  guardianPhone: z.string().trim().max(30).optional()
+  guardianPhone: guardianPhoneSchema
 });
 
 export const attendanceChoices = [

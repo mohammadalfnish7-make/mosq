@@ -216,7 +216,7 @@ function TeacherSection({
         fullName: String(data.get("fullName") ?? "").trim(),
         email: String(data.get("email") ?? "").trim(),
         password: String(data.get("password") ?? ""),
-        ...(String(data.get("phone") ?? "").trim() ? { phone: String(data.get("phone")).trim() } : {}),
+        phone: String(data.get("phone") ?? "").trim(),
         ...(String(data.get("circleId") ?? "") ? { circleId: String(data.get("circleId")) } : {})
       });
       htmlForm.reset();
@@ -231,7 +231,7 @@ function TeacherSection({
       await requestJson("PATCH", `/api/admin/teachers/${teacher.id}`, {
         fullName: String(data.get("fullName") ?? "").trim(),
         email: String(data.get("email") ?? "").trim(),
-        phone: String(data.get("phone") ?? "").trim() || null,
+        phone: String(data.get("phone") ?? "").trim(),
         circleId: String(data.get("circleId") ?? "") || null,
         isActive: data.get("isActive") === "on",
         ...(password ? { password } : {})
@@ -247,7 +247,7 @@ function TeacherSection({
         <label className="grid gap-1"><span className={labelClass}>الاسم الكامل</span><input className={fieldClass} name="fullName" required minLength={2} maxLength={120} /></label>
         <label className="grid gap-1"><span className={labelClass}>البريد الإلكتروني</span><input className={fieldClass} name="email" type="email" required /></label>
         <label className="grid gap-1"><span className={labelClass}>كلمة المرور</span><input className={fieldClass} name="password" type="password" required minLength={8} /></label>
-        <label className="grid gap-1"><span className={labelClass}>الهاتف (اختياري)</span><input className={fieldClass} name="phone" maxLength={30} /></label>
+        <label className="grid gap-1"><span className={labelClass}>الهاتف</span><input className={fieldClass} name="phone" required maxLength={30} /></label>
         <label className="grid gap-1">
           <span className={labelClass}>الحلقة (اختياري)</span>
           <select className={fieldClass} name="circleId" defaultValue="">
@@ -270,7 +270,7 @@ function TeacherSection({
                 <form className="grid gap-2" onSubmit={(event) => void handleUpdate(event, teacher)}>
                   <input className={fieldClass} name="fullName" defaultValue={teacher.fullName} required />
                   <input className={fieldClass} name="email" type="email" defaultValue={teacher.email} required />
-                  <input className={fieldClass} name="phone" defaultValue={teacher.phone ?? ""} />
+                  <input className={fieldClass} name="phone" defaultValue={teacher.phone ?? ""} required maxLength={30} />
                   <input className={fieldClass} name="password" type="password" minLength={8} placeholder="كلمة مرور جديدة (اختياري)" />
                   <select className={fieldClass} name="circleId" defaultValue={teacher.circleId ?? ""}>
                     <option value="">بدون حلقة</option>
@@ -331,7 +331,7 @@ function StudentSection({
       await requestJson("POST", "/api/admin/students", {
         fullName: String(data.get("fullName") ?? "").trim(),
         circleId: String(data.get("circleId") ?? ""),
-        ...(String(data.get("guardianPhone") ?? "").trim() ? { guardianPhone: String(data.get("guardianPhone")).trim() } : {})
+        guardianPhone: String(data.get("guardianPhone") ?? "").trim()
       });
       htmlForm.reset();
     }, "تمت إضافة الطالب بنجاح");
@@ -344,7 +344,7 @@ function StudentSection({
       await requestJson("PATCH", `/api/admin/students/${id}`, {
         fullName: String(data.get("fullName") ?? "").trim(),
         circleId: String(data.get("circleId") ?? ""),
-        guardianPhone: String(data.get("guardianPhone") ?? "").trim() || undefined,
+        guardianPhone: String(data.get("guardianPhone") ?? "").trim(),
         isActive: data.get("isActive") === "on"
       });
       setEditingId(null);
@@ -376,7 +376,7 @@ function StudentSection({
             {activeCircles.map((circle) => <option key={circle.id} value={circle.id}>{circle.name}</option>)}
           </select>
         </label>
-        <label className="grid gap-1"><span className={labelClass}>هاتف ولي الأمر (اختياري)</span><input className={fieldClass} name="guardianPhone" maxLength={30} /></label>
+        <label className="grid gap-1"><span className={labelClass}>هاتف ولي الأمر</span><input className={fieldClass} name="guardianPhone" required maxLength={30} /></label>
         {form.error ? <FormError message={form.error} /> : null}
         {form.success ? <FormSuccess message={form.success} /> : null}
         <button className={buttonClass} type="submit" disabled={form.loading || activeCircles.length === 0}>{form.loading ? "جاري الحفظ..." : "إضافة طالب"}</button>
@@ -392,7 +392,7 @@ function StudentSection({
                   <select className={fieldClass} name="circleId" defaultValue={student.circleId} required>
                     {circles.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
                   </select>
-                  <input className={fieldClass} name="guardianPhone" defaultValue={student.guardianPhone ?? ""} />
+                  <input className={fieldClass} name="guardianPhone" defaultValue={student.guardianPhone ?? ""} required maxLength={30} />
                   <label className="flex items-center gap-2 text-sm font-semibold">
                     <input type="checkbox" name="isActive" defaultChecked={student.isActive} />نشط
                   </label>
@@ -418,9 +418,10 @@ function StudentSection({
                     </div>
                     {student.approvalStatus === "PENDING" ? (
                       <button
-                        className="rounded-lg bg-teal px-3 py-1 text-xs font-bold text-white"
+                        className="rounded-lg bg-teal px-3 py-1 text-xs font-bold text-white disabled:opacity-50"
                         type="button"
-                        disabled={form.loading}
+                        disabled={form.loading || !student.guardianPhone}
+                        title={student.guardianPhone ? undefined : "أضف هاتف ولي الأمر قبل الاعتماد"}
                         onClick={() => void handleApprove(student.id)}
                       >
                         اعتماد

@@ -3,6 +3,7 @@ export type PlatformTenantSummary = {
   name: string;
   isActive: boolean;
   createdAt: string;
+  adminId: string | null;
   adminEmail: string | null;
   adminName: string | null;
   userCount: number;
